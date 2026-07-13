@@ -129,3 +129,20 @@ def test_quality_flags_bad_price():
     statuses = {c["check"]: c["status"] for c in report["checks"]}
     assert statuses["price_valid"] == "fail"
     assert report["overall_status"] == "fail"
+
+
+def test_quality_flags_missing_schema_column():
+    df = transform.build_games(_sample_records()).drop(columns=["review_ratio"])
+    report = quality.run_quality_checks(df, expected_games=3, save=False)
+    statuses = {c["check"]: c["status"] for c in report["checks"]}
+    assert statuses["schema_columns_present"] == "fail"
+    assert report["overall_status"] == "fail"
+
+
+def test_quality_flags_null_key_fields():
+    df = transform.build_games(_sample_records())
+    df.loc[0, "name"] = ""
+    report = quality.run_quality_checks(df, expected_games=3, save=False)
+    statuses = {c["check"]: c["status"] for c in report["checks"]}
+    assert statuses["key_fields_not_null"] == "fail"
+    assert report["overall_status"] == "fail"

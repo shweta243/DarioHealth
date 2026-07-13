@@ -1,132 +1,257 @@
 # AI Conversation Transcript
 
-This is the transcript of the AI-assisted work behind **Steam Games Insights**.
-It captures how the assignment was understood, how decisions were made, and how
-AI output was reviewed, challenged, and refined — not just used to generate code.
+This transcript captures the full AI-assisted journey behind Steam Games Insights,
+from initial assignment understanding to final dashboard, data-quality hardening,
+and expanded ETL test coverage.
 
-The assistant used was GitHub Copilot (Claude-based agent) inside VS Code.
-
----
-
-## 1. Understanding & breaking down the assignment
-
-**Me:** Reuse the same end-to-end approach as my previous project, but build it
-around **Steam gaming datasets**, with a proper analytics layer and dashboard.
-Keep it reliable and not over-engineered.
-
-**AI:** Same proven shape applies: Python + Streamlit + a **free, keyless** API,
-split ETL (`extract` / `transform` / `quality`), a business-facing dashboard, an
-explicit data-quality panel, offline tests, README, and this transcript. The
-only real design change is the data source and the product narrative.
+The assistant used was GitHub Copilot (GPT-5.3-Codex) inside VS Code.
 
 ---
 
-## 2. Selecting the API & product direction
+## 1. Understanding and breaking down the assignment
+
+**Me:** Use the Steam gaming dataset to create an analytical dashboard about
+gaming users. Extract raw data from an open-source Steam dataset. Use the raw
+table containing details about the titles being played and the usage of these
+titles.
+
+**AI:** We can implement this with Python and Streamlit over an open-source,
+keyless Steam data source, then structure it as ETL (`extract` / `transform` /
+`quality`). The extract layer will pull raw title details and usage-related
+fields, the transform layer will create analytical tables, and the dashboard
+will present gaming-user insights.
+
+**AI:** We will keep it reliable with explicit data-quality checks, offline unit
+tests, a clear README, and this transcript.
+
+---
+
+## 2. Selecting the API and product direction
 
 **Me:** Which Steam data source is free and keyless? The official Steam Web API
-needs a key for a lot of endpoints.
+needs a key for many endpoints.
 
-**AI:** Options: the Steam storefront `appdetails` (keyless but per-app and no
-ownership/CCU), or **SteamSpy** — keyless, free, and analytics-rich (reviews,
-owners estimates, concurrent users, price, discount, playtime, and genre/tags
-via per-app details). Recommendation: **SteamSpy**, because it gives real
-market metrics without a key.
+**AI:** Two practical options are the Steam storefront appdetails endpoint and
+SteamSpy. Recommendation: SteamSpy, because it is keyless and provides analytics
+fields such as reviews, owners estimates, concurrent users, prices, discounts,
+and playtime, with genre/tags available via per-app enrichment.
 
-**Me:** Before we build, verify the actual response shape — I don't want to
-guess field formats.
+**Me:** Verify the actual response shape first. I do not want to assume field
+formats.
 
-**AI:** Probed `?request=top100in2weeks`: returns ~100 games keyed by appid with
-`positive`, `negative`, `owners` (a `"100,000,000 .. 200,000,000"` string),
-`price`/`initialprice`/`discount` (cents as strings), and `ccu`. But that list
-does **not** include genre. Probed `?request=appdetails&appid=730`: that adds
-`genre`, `tags` (a dict of tag→votes) and `languages`.
+**AI:** Probed `request=top100in2weeks`: response is keyed by appid and includes
+`positive`, `negative`, `owners` (range string), `price`, `initialprice`,
+`discount`, and `ccu`. This base response does not include genre.
 
-**Me:** So genre needs the per-app call. That's important for segmentation — how
-do we keep it fast?
+**AI:** Probed `request=appdetails&appid=<id>`: this adds `genre`, `tags`, and
+`languages`.
 
-**AI:** Two-step extract: pull the base top-100 once, then enrich only the top N
-(default 50) with `appdetails`, throttled to ~1 req/sec per SteamSpy's guidance.
-That's ~1 minute and rate-limit-friendly; `TOP_N_ENRICH` is configurable.
+**Me:** Genre requires per-app calls. How do we keep this fast?
 
-**Me:** Good trade-off. Product direction?
+**AI:** Two-step extract: fetch top list once, then enrich only top N titles
+(default 50), throttled to approximately one request per second to stay
+rate-limit friendly.
 
-**AI:** A **games-market analytics dashboard**: what's played now (CCU),
-reception vs. audience size, pricing/discounts, and genre segmentation — the
-questions a publisher or market analyst actually asks.
+**Me:** Good. What should the product narrative be?
 
----
-
-## 3. Data model & ETL design
-
-**Me:** Define the model.
-
-**AI:** Two tidy tables:
-- `games` — one row per game with cleaned fields plus derived metrics
-  (`review_ratio`, `owners_mid`, `is_free`, `on_sale`, `rating_label`).
-- `genre_summary` — one row per primary genre (counts, avg review ratio, total
-  CCU, avg price, total owners).
-
-Key parsing: owners bucket `"a .. b"` → numeric min/max/mid; price cents → USD;
-playtime minutes → hours; `tags` dict → top-3 tags string.
-
-**Me:** The `rating_label` shouldn't call a game "Positive" off 5 reviews.
-
-**AI:** Added a minimum-reviews gate (`MIN_REVIEWS_FOR_LABEL`); below it the
-label is "Insufficient data" so small samples don't produce misleading labels.
+**AI:** A games-market analytics dashboard: what is played now (CCU), reception
+vs audience size, pricing and discounts, genre-level distribution, and usage
+trends.
 
 ---
 
-## 4. Data quality & reliability
+## 3. ETL and data model design
 
-**Me:** What checks are meaningful for this dataset?
+**Me:** Define the model in a simple way. Create a clear table for the main
+raw-title data, include extra columns created in transformation, and add a
+summary table from raw data (for example, genre summary).
 
-**AI:** Nine checks: non-empty, expected coverage, no duplicate appids, names
-present, non-negative review counts, review ratio in 0–100, price non-negative
-and bounded, discount in 0–100, and `owners_min ≤ owners_max`. Each returns
-pass/fail + detail, aggregated into a report and shown in the dashboard.
+**AI:** The transform layer creates one detailed table and one summary table.
 
-**Me:** And enrichment failures shouldn't lose games.
+### Main table: `games`
 
-**AI:** Correct — a failed `appdetails` call keeps the base fields and just
-leaves genre/tags empty, logged as a warning. The pipeline continues.
+| Column | Source field | Meaning |
+| --- | --- | --- |
+| `appid` | `appid` | Unique game id |
+| `name` | `name` | Title name |
+| `developer` | `developer` | Developer |
+| `publisher` | `publisher` | Publisher |
+| `ccu` | `ccu` | Concurrent users |
+| `positive` | `positive` | Positive reviews |
+| `negative` | `negative` | Negative reviews |
+| `price_usd` | `price` | Current USD price |
+| `initial_price_usd` | `initialprice` | Original USD price |
+| `discount_pct` | `discount` | Discount percentage |
+| `owners_min` | `owners` | Parsed minimum owners |
+| `owners_max` | `owners` | Parsed maximum owners |
+| `primary_genre` | `genre` | First genre token |
+| `all_genres` | `genre` | Full genre string |
+| `top_tags` | `tags` | Top-voted tags |
+
+### Derived columns added in transform
+
+| Derived column | Logic |
+| --- | --- |
+| `total_reviews` | `positive + negative` |
+| `review_ratio` | `(positive / total_reviews) * 100` |
+| `owners_mid` | `(owners_min + owners_max) / 2` |
+| `avg_playtime_hours` | `average_forever / 60` |
+| `median_playtime_hours` | `median_forever / 60` |
+| `is_free` | `price_usd == 0` |
+| `on_sale` | `discount_pct > 0` |
+| `rating_label` | Positive, Mixed, Negative, or Insufficient data |
+
+### Summary table: `genre_summary`
+
+| Column | Meaning |
+| --- | --- |
+| `primary_genre` | Genre name |
+| `games` | Number of games |
+| `avg_review_ratio` | Average review ratio |
+| `total_ccu` | Total concurrent users |
+| `avg_price_usd` | Average price |
+| `total_owners_mid` | Sum of owners midpoint |
+| `free_games` | Count of free-to-play titles |
+
+**Me:** The rating label should not mark a title as Positive on very low review
+volume.
+
+**AI:** Added a minimum-review threshold before assigning Positive/Mixed/Negative.
+Otherwise, label is Insufficient data.
 
 ---
 
-## 5. Debugging, validation & reviewing AI output
+## 4. Dashboard evolution from simple to final
 
-**Me:** Build it, run the offline tests first, then the real ETL.
+**Me:** Start with a simple analytical dashboard driven by raw and transformed
+tables.
 
-**AI:** Implemented the modules and tests. `pytest -q` passed using synthetic
-records (owners parsing, cents→USD, review-ratio bounds, genre summary, and two
-negative quality cases). Then ran `python etl.py` against the live SteamSpy API:
-top-100 pulled, top 50 enriched, processed tables written, and the data-quality
-gate reported.
+**AI:** Initial dashboard covered core visibility: games tracked, review quality,
+concurrency, usage trends, and market split.
 
-**Me:** Keep the Streamlit code on the current API — no deprecated params.
+**Me:** Evolve this to a richer final dashboard with better navigation, filters,
+and graph quality.
 
-**AI:** Used `width="stretch"` (not the deprecated `use_container_width`) from
-the start, and verified the app boots cleanly.
+**AI:** Dashboard was expanded into multi-page analytics with left-side page
+navigation and compact cross-page filters (title, publisher, country, date).
 
-**Me:** Anything over-engineered?
+**Me:** Add executive growth metrics and improve storytelling.
 
-**AI:** No DB, no extra abstractions, enrichment capped for speed, error handling
-only at the network boundary and parsing edges — in line with the brief's
-preference for a smaller, reliable solution.
+**AI:** Added Usage Worldwide layer with engagement KPIs including MAU and DAU,
+YoY deltas, sessions and hours trends, and month-over-month movement visuals.
+
+**Me:** Include WAU in the metric narrative and keep extending insights.
+
+**AI:** Captured WAU as a requested engagement metric in the dashboard evolution
+requirements and retained MAU/DAU-driven growth narrative already implemented.
+
+**Me:** Add AI-assisted summary to explain the charts.
+
+**AI:** Added AI-generated summary blocks that compute narrative insights from
+processed data (trend direction, market mix, top titles, genre signals,
+free-vs-paid mix).
+
+**Me:** Keep refining graph behavior and page-level readability.
+
+**AI:** Final dashboard includes clearer chart grouping, top-title views,
+country/genre breakdowns, usage-over-time visuals, and a dedicated data-quality
+page plus data export view.
 
 ---
 
-## 6. How AI was used to improve quality (not only generate code)
+## 5. Data quality and reliability hardening
 
-- **Verified assumptions:** probed the live API to confirm field shapes before
-  writing parsing code, avoiding guesswork bugs.
-- **Judgment on scope:** capped enrichment and respected the rate limit instead
-  of naively fetching everything.
-- **Data honesty:** added a minimum-review gate for rating labels and used the
-  owners mid-point transparently.
-- **Reliability:** retries/backoff, enrichment-failure isolation, robust parsing
-  of string numbers.
-- **Validation loop:** ran tests and the real ETL, and checked the quality
-  report before wiring the dashboard.
+**Me:** How does data quality work? Is schema validation included?
 
-**Outcome:** a small, well-structured, reproducible Steam analytics product that
-runs with the standard commands and is honest about its estimates and limits.
+**AI:** Initially it had rule-based checks (coverage, duplicates, ranges,
+relationships). Then it was upgraded to include schema and key completeness
+validation.
+
+**Me:** Ensure schema of all fields is in place, keys are not null, and add
+field-level checks with a full list.
+
+**AI:** Implemented expanded quality checks in the processed layer.
+
+### Final quality checks added
+
+1. `non_empty`
+2. `schema_columns_present`
+3. `schema_types_valid`
+4. `key_fields_not_null`
+5. `game_coverage`
+6. `no_duplicate_appids`
+7. `names_present`
+8. `reviews_non_negative`
+9. `total_reviews_consistent`
+10. `review_ratio_in_range`
+11. `ccu_non_negative`
+12. `price_valid`
+13. `initial_price_valid`
+14. `discount_price_relationship`
+15. `discount_in_range`
+16. `owners_non_negative`
+17. `owners_min_le_max`
+18. `owners_mid_in_bounds`
+
+**AI:** Reliability posture also includes extraction retry/backoff and enrichment
+failure isolation so one bad enrichment call does not drop an entire game row.
+
+---
+
+## 6. Test coverage expansion
+
+**Me:** Do we have proper unit tests for the full ETL pipeline?
+
+**AI:** Core transform/quality was covered, but full pipeline coverage needed
+additional tests.
+
+**Me:** Add tests for extract API failure, daily usage model, ETL orchestration,
+and final processed-file validation.
+
+**AI:** Added `tests/test_pipeline_layers.py` with:
+
+1. `test_extract_api_failure_raises_extraction_error`
+2. `test_usage_daily_model_outputs_expected_fields_and_ranges`
+3. `test_usage_daily_model_is_deterministic_for_same_input`
+4. `test_etl_run_orchestrates_layers_in_order`
+5. `test_etl_run_returns_error_on_extract_failure`
+6. `test_pipeline_writes_and_validates_final_processed_files`
+
+**Me:** Did all tests pass?
+
+**AI:** Yes. Full suite passed with `16 passed`.
+
+---
+
+## 7. Clarification Q&A captured during development
+
+**Me:** What are `average_forever`, `average_2weeks`, `median_forever`, and
+`median_2weeks`?
+
+**AI:** SteamSpy playtime fields in minutes (lifetime and two-week average/median).
+In the sampled raw payload, many values were zero, so derived playtime-hour
+metrics are also zero for those records.
+
+**Me:** Which code writes `usage_daily.csv`?
+
+**AI:** `src/usage.py`, function `build_and_save(games)`, called from `etl.py`.
+
+**Me:** Is `ai_transcript/transcript.md` automatically updated by pipeline runs?
+
+**AI:** No. It changes only when edited manually.
+
+---
+
+## 8. Final state summary
+
+**AI:** Final solution state:
+
+- Raw layer: SteamSpy base + enrichment snapshots.
+- Transform layer: normalized game model and genre summary.
+- Analytical outputs: games, genre summary, daily usage, monthly metrics,
+  quality report.
+- Dashboard layer: multi-page analytics with filters, improved graphs, MAU/DAU
+  KPIs, and AI-assisted narrative summary.
+- Quality layer: expanded schema + key + consistency checks (18 checks total).
+- Test layer: expanded to cover extract failures, usage model behavior,
+  orchestration, and artifact validation (16 passing tests).

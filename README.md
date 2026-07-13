@@ -69,15 +69,18 @@ steam-games-insights/
 ├── README.md
 ├── requirements.txt
 ├── app.py                     # Streamlit application (dashboard)
-├── etl.py                     # ETL entry point (extract → transform → quality)
+├── etl.py                     # ETL entry point (extract → transform → usage → growth → quality)
 ├── src/
 │   ├── config.py              # Endpoints, enrichment size, thresholds, paths
 │   ├── extract.py             # SteamSpy calls, retries, enrichment, raw persistence
 │   ├── transform.py           # Cleaning, parsing, metrics, aggregation
+│   ├── usage.py               # Modeled daily usage layer (date/country/title)
+│   ├── growth.py              # Modeled monthly metrics layer (MAU/DAU/new users)
 │   ├── quality.py             # Data-quality checks + report
 │   └── utils.py               # Logging, JSON I/O
 ├── tests/
-│   └── test_etl.py            # Offline unit tests (pytest)
+│   ├── test_etl.py            # Transform + quality unit tests
+│   └── test_pipeline_layers.py # Extract/usage/orchestration/artifact tests
 ├── data/
 │   ├── raw/                   # Raw API extracts (JSON)
 │   └── processed/             # games.csv, genre_summary.csv, quality report
@@ -89,7 +92,7 @@ steam-games-insights/
 
 ## 4. Data model & ETL explanation
 
-The pipeline has three clear stages (see `etl.py`):
+The pipeline has five clear stages (see `etl.py`):
 
 ### Extract — `src/extract.py`
 - Pulls the `top100in2weeks` base list in a single call.
@@ -124,15 +127,25 @@ numbers, converting price cents → USD and playtime minutes → hours, deriving
 `review_ratio`, and bucketing reception into a `rating_label` (Positive / Mixed /
 Negative / Insufficient data) that respects a minimum review volume.
 
+### Modeled usage — `src/usage.py`
+Builds `usage_daily.csv` (daily title usage by country) from snapshot metrics in
+a deterministic way for reproducible trend and market charts.
+
+### Modeled growth — `src/growth.py`
+Builds `monthly_metrics.csv` (MAU, DAU, new users, sessions, hours) as a
+deterministic monthly series for executive growth views.
+
 ### Data quality — `src/quality.py`
 Runs explicit checks and writes `data/processed/data_quality_report.json`.
 
 ```mermaid
 flowchart LR
-    A[SteamSpy API] --> B[Extract\ntop100 + appdetails]
-    B --> C[Transform\ntidy games + metrics]
-    C --> D[Data Quality\nchecks + report]
-    D --> E[Streamlit\ndashboard]
+  A[SteamSpy API] --> B[Extract\ntop100 + appdetails]
+  B --> C[Transform\ntidy games + metrics]
+  C --> D[Modeled Usage\nusage_daily]
+  D --> E[Modeled Growth\nmonthly_metrics]
+  E --> F[Data Quality\nchecks + report]
+  F --> G[Streamlit\ndashboard]
 ```
 
 ---
@@ -177,15 +190,24 @@ custom CSS, and all charts use a shared blue/purple palette and dark template.
 
 Implemented in `src/quality.py` and surfaced in the dashboard:
 
-1. **Non-empty dataset** — the pipeline produced rows.
-2. **Game coverage** — expected number of games present.
-3. **No duplicate appids**.
-4. **Names present** — no missing game names.
-5. **Reviews non-negative** — positive/negative counts ≥ 0.
-6. **Review ratio in range** — within `0–100`.
-7. **Price valid** — non-negative and within a sane upper bound.
-8. **Discount in range** — within `0–100%`.
-9. **Logical relationship** — `owners_min ≤ owners_max`.
+1. **Non-empty dataset**.
+2. **Schema columns present**.
+3. **Schema types valid** (numeric/text/bool compatibility).
+4. **Key fields not null/empty** (`appid`, `name`, `developer`, `publisher`, `primary_genre`).
+5. **Game coverage** — expected number of games present.
+6. **No duplicate appids**.
+7. **Names present**.
+8. **Reviews non-negative**.
+9. **`total_reviews` consistency** (`positive + negative`).
+10. **Review ratio in range** — within `0–100`.
+11. **CCU non-negative**.
+12. **Price valid** — non-negative and bounded.
+13. **Initial price valid** — non-negative and bounded.
+14. **Discount-price relationship** (`price_usd <= initial_price_usd` when discounted).
+15. **Discount in range** — within `0–100%`.
+16. **Owners non-negative** (`owners_min`, `owners_max`, `owners_mid`).
+17. **Logical relationship** — `owners_min ≤ owners_max`.
+18. **Owners midpoint in bounds** (`owners_min <= owners_mid <= owners_max`).
 
 Additional handling: request retries/backoff, enrichment-failure isolation,
 robust parsing of string numbers, and safe fallbacks for missing fields.
@@ -251,7 +273,33 @@ pip install pytest
 pytest -q
 ```
 
-The tests run **fully offline** using synthetic data (no network calls).
+If your shell cannot import the local `src` package directly, run:
+
+```bash
+# Windows PowerShell
+$env:PYTHONPATH='.'; pytest -q
+```
+
+The tests run **fully offline** using synthetic data (no live network calls).
+
+---
+
+## Git push checklist
+
+```bash
+git status
+git add .
+git commit -m "Finalize dashboard, quality checks, and ETL test coverage"
+git remote -v
+git push origin <your-branch>
+```
+
+If no remote is configured, add one first:
+
+```bash
+git remote add origin <your-repository-url>
+git push -u origin <your-branch>
+```
 
 ---
 
