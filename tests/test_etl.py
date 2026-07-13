@@ -109,7 +109,7 @@ def test_genre_summary_one_row_per_genre():
 
 def test_quality_passes_on_clean_data():
     df = transform.build_games(_sample_records())
-    report = quality.run_quality_checks(df, expected_games=3)
+    report = quality.run_quality_checks(df, expected_games=3, save=False)
     assert report["overall_status"] == "pass"
     assert report["checks_failed"] == 0
 
@@ -117,7 +117,7 @@ def test_quality_passes_on_clean_data():
 def test_quality_flags_duplicates():
     df = transform.build_games(_sample_records())
     dup = pd.concat([df, df.iloc[[0]]], ignore_index=True)
-    report = quality.run_quality_checks(dup, expected_games=3)
+    report = quality.run_quality_checks(dup, expected_games=3, save=False)
     statuses = {c["check"]: c["status"] for c in report["checks"]}
     assert statuses["no_duplicate_appids"] == "fail"
 
@@ -125,7 +125,7 @@ def test_quality_flags_duplicates():
 def test_quality_flags_bad_price():
     df = transform.build_games(_sample_records())
     df.loc[0, "price_usd"] = 99999.0
-    report = quality.run_quality_checks(df, expected_games=3)
+    report = quality.run_quality_checks(df, expected_games=3, save=False)
     statuses = {c["check"]: c["status"] for c in report["checks"]}
     assert statuses["price_valid"] == "fail"
     assert report["overall_status"] == "fail"

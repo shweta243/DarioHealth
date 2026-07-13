@@ -20,6 +20,7 @@ PROCESSED_DIR = DATA_DIR / "processed"
 GAMES_FILE = PROCESSED_DIR / "games.csv"
 GENRE_SUMMARY_FILE = PROCESSED_DIR / "genre_summary.csv"
 USAGE_DAILY_FILE = PROCESSED_DIR / "usage_daily.csv"
+MONTHLY_METRICS_FILE = PROCESSED_DIR / "monthly_metrics.csv"
 QUALITY_REPORT_FILE = PROCESSED_DIR / "data_quality_report.json"
 
 # --------------------------------------------------------------------------
@@ -91,3 +92,15 @@ COUNTRIES = {
     "Australia": 0.03,
     "Other": 0.15,
 }
+
+# --------------------------------------------------------------------------
+# Modeled monthly growth metrics (MAU / DAU / new users)
+# --------------------------------------------------------------------------
+# Same caveat as the daily layer: SteamSpy has no historical monthly series,
+# so the monthly growth table is a DETERMINISTIC modeled series (seeded) built
+# from the snapshot totals with a growth trend + seasonality. It powers the
+# "Usage Worldwide" executive page (MAU, DAU, new users, YoY deltas).
+GROWTH_START = "2024-01"     # first modeled month
+GROWTH_END = "2026-06"       # last modeled month ("data available until")
+MAU_BASE_MULTIPLIER = 2.0    # base monthly active users ≈ total CCU × this
+MONTHLY_GROWTH = 0.015       # ~1.5% compound month-over-month growth

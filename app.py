@@ -124,19 +124,33 @@ def style_fig(fig, height: int = 400, legend: bool = True):
 # --------------------------------------------------------------------------
 @st.cache_data(show_spinner=False)
 def load_data():
-    games = genre = usage = report = None
+    games = genre = usage = monthly = report = None
     if config.GAMES_FILE.exists():
         games = pd.read_csv(config.GAMES_FILE)
     if config.GENRE_SUMMARY_FILE.exists():
         genre = pd.read_csv(config.GENRE_SUMMARY_FILE)
     if config.USAGE_DAILY_FILE.exists():
         usage = pd.read_csv(config.USAGE_DAILY_FILE, parse_dates=["date"])
+    if config.MONTHLY_METRICS_FILE.exists():
+        monthly = pd.read_csv(config.MONTHLY_METRICS_FILE, parse_dates=["month_date"])
     if config.QUALITY_REPORT_FILE.exists():
         report = json.loads(config.QUALITY_REPORT_FILE.read_text(encoding="utf-8"))
-    return games, genre, usage, report
+    return games, genre, usage, monthly, report
 
 
-games, genre_summary, usage, report = load_data()
+games, genre_summary, usage, monthly, report = load_data()
+
+
+def fmt_big(n: float) -> str:
+    """Human-friendly large-number formatting (bn / M / K)."""
+    n = float(n)
+    if abs(n) >= 1e9:
+        return f"{n / 1e9:.2f}bn"
+    if abs(n) >= 1e6:
+        return f"{n / 1e6:.2f}M"
+    if abs(n) >= 1e3:
+        return f"{n / 1e3:.0f}K"
+    return f"{n:.0f}"
 
 
 # --------------------------------------------------------------------------
@@ -248,6 +262,7 @@ st.sidebar.markdown('<div class="filter-label">PAGES</div>', unsafe_allow_html=T
 
 PAGES = [
     "🧠  Summary",
+    "🌐  Usage Worldwide",
     "📈  Title Usage Overview",
     "📋  Title Usage by Metric",
     "👥  Active Players",
@@ -318,6 +333,102 @@ if page_name.endswith("Summary"):
         fig = px.pie(by_c, names="country", values="players", hole=0.5,
                      color_discrete_sequence=STEAM_COLORS)
         st.plotly_chart(style_fig(fig, 320), width="stretch")
+
+# ==========================================================================
+# PAGE: USAGE WORLDWIDE  (MAU / DAU / new users + YoY deltas)
+# ==========================================================================
+elif page_name.endswith("Worldwide"):
+    if monthly is None or monthly.empty:
+        topbar("USAGE WORLDWIDE")
+        st.info("Monthly metrics not found. Re-run `python etl.py`.")
+    else:
+        m = monthly.sort_values("month_date").reset_index(drop=True)
+        latest = m.iloc[-1]
+        yoy = m.iloc[-13] if len(m) >= 13 else m.iloc[0]
+
+        def delta_pct(cur, prev):
+            return (cur - prev) / prev * 100 if prev else 0.0
+
+        avail = latest["month_date"].strftime("%Y-%m")
+        st.markdown(
+            f'<div class="topbar"><div class="brand"><span class="brand-mark">▶</span>'
+            f"USAGE ON CLOUD GAMING WORLDWIDE</div>"
+            f'<div class="page-title">Data available until&nbsp;·&nbsp;{avail}</div>'
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+        # KPI cards with increment / decrement vs same month last year
+        k = st.columns(6)
+        k[0].metric("MAU (monthly active users)", fmt_big(latest["mau"]),
+                    f"{delta_pct(latest['mau'], yoy['mau']):+.1f}% YoY")
+        k[1].metric("DAU (avg daily active)", fmt_big(latest["dau"]),
+                    f"{delta_pct(latest['dau'], yoy['dau']):+.1f}% YoY")
+        k[2].metric("New users (this month)", fmt_big(latest["new_users"]),
+                    f"{delta_pct(latest['new_users'], yoy['new_users']):+.1f}% YoY")
+        k[3].metric("Total sessions", fmt_big(latest["sessions"]),
+                    f"{delta_pct(latest['sessions'], yoy['sessions']):+.1f}% YoY")
+        k[4].metric("Total hours", fmt_big(latest["hours"]),
+                    f"{delta_pct(latest['hours'], yoy['hours']):+.1f}% YoY")
+        k[5].metric("Hours per user", f"{latest['hours_per_user']:.2f}",
+                    f"{delta_pct(latest['hours_per_user'], yoy['hours_per_user']):+.1f}% YoY")
+        st.caption(
+            "Deltas compare the latest month to the same month last year "
+            "(green ▲ = growth, red ▼ = decline)."
+        )
+
+        # Year filter (compact dropdown) for the year-over-year comparison
+        years = sorted(m["year"].unique())
+        sel_years = dd_multi("📅 Year", years, years, "ww_year")
+
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("#### Unique users by month (MAU)")
+            fig = px.line(m, x="month_date", y="mau", markers=True,
+                          labels={"mau": "MAU", "month_date": ""})
+            fig.update_traces(line_color=ACCENT, line_width=2.6)
+            st.plotly_chart(style_fig(fig, 300, legend=False), width="stretch")
+        with c2:
+            st.markdown("#### DAU by month")
+            fig = px.line(m, x="month_date", y="dau", markers=True,
+                          labels={"dau": "DAU", "month_date": ""})
+            fig.update_traces(line_color=PURPLE, line_width=2.6)
+            st.plotly_chart(style_fig(fig, 300, legend=False), width="stretch")
+
+        c3, c4 = st.columns(2)
+        with c3:
+            st.markdown("#### New users by month")
+            fig = px.bar(m, x="month_date", y="new_users",
+                         labels={"new_users": "New users", "month_date": ""})
+            fig.update_traces(marker_color="#37c6d0")
+            st.plotly_chart(style_fig(fig, 300, legend=False), width="stretch")
+        with c4:
+            st.markdown("#### Net MAU change month-over-month")
+            mc = m.copy()
+            mc["mau_change"] = mc["mau"].diff()
+            mc["dir"] = mc["mau_change"].apply(lambda v: "Increase" if v >= 0 else "Decrease")
+            fig = px.bar(mc.dropna(subset=["mau_change"]), x="month_date", y="mau_change",
+                         color="dir", color_discrete_map={"Increase": "#4fd18b", "Decrease": "#e46a6a"},
+                         labels={"mau_change": "MAU change", "month_date": "", "dir": ""})
+            st.plotly_chart(style_fig(fig, 300), width="stretch")
+
+        c5, c6 = st.columns(2)
+        with c5:
+            st.markdown("#### Hours played by month")
+            fig = px.line(m, x="month_date", y="hours", markers=True,
+                          labels={"hours": "Hours", "month_date": ""})
+            fig.update_traces(line_color=ACCENT, line_width=2.6)
+            st.plotly_chart(style_fig(fig, 300, legend=False), width="stretch")
+        with c6:
+            st.markdown("#### Sessions by month (year over year)")
+            order = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+            cmp = m[m["year"].isin(sel_years)]
+            fig = px.line(cmp, x="month_name", y="sessions", color="year", markers=True,
+                          category_orders={"month_name": order},
+                          labels={"sessions": "Sessions", "month_name": "", "year": "Year"})
+            fig.update_traces(line_width=2.6)
+            st.plotly_chart(style_fig(fig, 300), width="stretch")
 
 # ==========================================================================
 # PAGE: TITLE USAGE OVERVIEW

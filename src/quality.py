@@ -27,7 +27,7 @@ def _check(name: str, passed: bool, detail: str, **extra: Any) -> dict[str, Any]
 
 
 def run_quality_checks(
-    games: pd.DataFrame, expected_games: int | None = None
+    games: pd.DataFrame, expected_games: int | None = None, save: bool = True
 ) -> dict[str, Any]:
     """Validate the processed games table and return a report dict."""
     checks: list[dict[str, Any]] = []
@@ -142,8 +142,9 @@ def run_quality_checks(
         "checks": checks,
     }
 
-    utils.ensure_directories()
-    utils.save_json(report, config.QUALITY_REPORT_FILE)
+    if save:
+        utils.ensure_directories()
+        utils.save_json(report, config.QUALITY_REPORT_FILE)
     logger.info(
         "Data quality: %s/%s checks passed (%s)",
         passed,

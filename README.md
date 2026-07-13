@@ -148,6 +148,11 @@ Publisher / Country / Date) so a single title list never floods the screen.
   insights" panel that is computed from the data on every run (trend direction,
   weekend seasonality, top title/market, best-received genre, free-vs-paid mix),
   with a players-by-date trend and a players-by-market donut.
+- **🌐 Usage Worldwide** — an executive growth page with **MAU, DAU and new-user**
+  KPI cards that show **increment/decrement vs. the same month last year**
+  (green ▲ / red ▼), plus MAU-by-month, DAU-by-month, new-users-by-month,
+  net-MAU-change month-over-month, hours-by-month and **year-over-year sessions**
+  charts (with a Year dropdown).
 - **📈 Title Usage Overview** — usage (player-hours) of each title **by date** as
   a multi-series line graph, plus total usage by title and usage share by country.
 - **📋 Title Usage by Metric** — a Power BI-style **table** (TitleName /
@@ -195,6 +200,10 @@ robust parsing of string numbers, and safe fallbacks for missing fields.
   data, so `usage_daily.csv` is a **deterministic estimate** derived from the
   snapshot (CCU, playtime, publisher) across a date window and a fixed country
   mix. It is reproducible and clearly labeled, but it is *not* measured data.
+- **Monthly growth metrics are modeled** — `monthly_metrics.csv` (MAU, DAU,
+  new users, sessions, hours across ~30 months) is likewise a deterministic,
+  seeded estimate built from the snapshot totals with a growth trend and
+  seasonality, powering the "Usage Worldwide" page. It is *not* measured history.
 - **Snapshot in time** — CCU, prices and discounts change; re-running the ETL
   refreshes them.
 - **Enrichment is capped** — only the top `TOP_N_ENRICH` games get genre/tags to
