@@ -12,13 +12,14 @@ Outputs (written to data/):
     data/raw/games_enriched.json      base list + genre/tags enrichment
     data/processed/games.csv          tidy per-game table
     data/processed/genre_summary.csv  per-genre aggregates
+    data/processed/usage_daily.csv    modeled daily usage (by date & country)
     data/processed/data_quality_report.json
 """
 from __future__ import annotations
 
 import sys
 
-from src import config, extract, quality, transform, utils
+from src import config, extract, quality, transform, usage, utils
 
 logger = utils.get_logger()
 
@@ -33,12 +34,14 @@ def run() -> int:
         return 1
 
     games, genre_summary = transform.transform(records)
+    usage_daily = usage.build_and_save(games)
     report = quality.run_quality_checks(games, expected_games=len(records))
 
     logger.info(
-        "Done. %s games, %s genres. Data quality: %s (%s/%s checks).",
+        "Done. %s games, %s genres, %s usage rows. Data quality: %s (%s/%s checks).",
         games.shape[0],
         genre_summary.shape[0],
+        usage_daily.shape[0],
         report["overall_status"].upper(),
         report["checks_passed"],
         report["checks_total"],

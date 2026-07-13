@@ -139,21 +139,25 @@ flowchart LR
 
 ## 5. Dashboard / application overview
 
-`app.py` reads the processed outputs and presents:
+`app.py` is a **Steam-themed** (dark blue gradient, Steam accent colours),
+multi-section dashboard. Each analytical section has its **own filters for
+title, publisher, country and date**:
 
-- **KPI header** — game count, average review score, total live players, free
-  games, average price, plus a "most-played right now" callout.
-- **🏆 Popularity** — live concurrent players and estimated-owners leaders.
-- **⭐ Reception** — reception-vs-popularity scatter, rating-label mix, and a
-  best-reviewed table.
-- **💵 Pricing** — price distribution, free vs. paid, and current discounts.
-- **🎯 Genres** — games per genre, average review score by genre, live players
-  by genre, and the full genre summary.
+- **🏠 Overview** — headline KPIs, live concurrent-player leaders, and total
+  active players by date.
+- **🎮 Title Usage** — usage (player-hours) of each title **by date** as a
+  professional multi-series line graph, plus total usage by title (bar) and
+  usage share by country (donut).
+- **👥 Active Players** — number of users playing each title **by date** (line),
+  players by country (bar), average daily players by title (bar), and a stacked
+  daily-players-by-country chart.
+- **📊 Market Snapshot** — reception vs. audience size, price distribution, and
+  genre breakdowns (with genre / price / publisher filters).
 - **✅ Data quality** — the full quality report with an overall pass/fail badge.
-- **🗂️ Data** — the filtered games table with a CSV download button.
+- **🗂️ Data** — the processed snapshot and modeled usage tables, with CSV export.
 
-Interactive **sidebar filters**: genre, free/paid, price range and minimum
-review count.
+The theme is set via [`.streamlit/config.toml`](.streamlit/config.toml) plus
+custom CSS, and all charts use a shared Steam colour palette and dark template.
 
 ---
 
@@ -180,6 +184,10 @@ robust parsing of string numbers, and safe fallbacks for missing fields.
 
 - **Estimates, not exact figures** — SteamSpy owners are modelled *ranges*; we
   use the mid-point for ranking.
+- **Daily & country data are modeled** — SteamSpy has no per-day or per-country
+  data, so `usage_daily.csv` is a **deterministic estimate** derived from the
+  snapshot (CCU, playtime, publisher) across a date window and a fixed country
+  mix. It is reproducible and clearly labeled, but it is *not* measured data.
 - **Snapshot in time** — CCU, prices and discounts change; re-running the ETL
   refreshes them.
 - **Enrichment is capped** — only the top `TOP_N_ENRICH` games get genre/tags to

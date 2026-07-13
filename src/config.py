@@ -19,6 +19,7 @@ PROCESSED_DIR = DATA_DIR / "processed"
 # Processed output files
 GAMES_FILE = PROCESSED_DIR / "games.csv"
 GENRE_SUMMARY_FILE = PROCESSED_DIR / "genre_summary.csv"
+USAGE_DAILY_FILE = PROCESSED_DIR / "usage_daily.csv"
 QUALITY_REPORT_FILE = PROCESSED_DIR / "data_quality_report.json"
 
 # --------------------------------------------------------------------------
@@ -59,3 +60,34 @@ MIN_REVIEWS_FOR_LABEL = 500
 # Review-ratio thresholds for the rating label buckets.
 RATING_POSITIVE = 70.0
 RATING_MIXED = 40.0
+
+# --------------------------------------------------------------------------
+# Modeled daily-usage layer
+# --------------------------------------------------------------------------
+# NOTE: SteamSpy's free API returns a point-in-time *snapshot* only - it has no
+# per-day history and no per-country breakdown. To power the time-series and
+# country views in the dashboard, the pipeline derives a DETERMINISTIC,
+# clearly-labeled daily-usage fact table from the real snapshot metrics
+# (concurrent users, playtime, publisher). Values are estimates seeded per
+# appid so runs are reproducible. This is documented in the README.
+USAGE_DAYS = 30          # length of the modeled daily window
+USAGE_TOP_N = 30         # how many top games to model (chart readability)
+DAU_FACTOR = 9.0         # daily-active ≈ concurrent-users × this factor
+WEEKEND_UPLIFT = 1.25    # weekend player multiplier
+
+# Approximate share of the Steam player base by country (sums to ~1.0).
+# Used only to allocate the modeled daily players across countries.
+COUNTRIES = {
+    "United States": 0.21,
+    "China": 0.18,
+    "Russia": 0.09,
+    "Germany": 0.07,
+    "Brazil": 0.06,
+    "United Kingdom": 0.05,
+    "South Korea": 0.05,
+    "Canada": 0.04,
+    "France": 0.04,
+    "Japan": 0.03,
+    "Australia": 0.03,
+    "Other": 0.15,
+}
