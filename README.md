@@ -139,25 +139,32 @@ flowchart LR
 
 ## 5. Dashboard / application overview
 
-`app.py` is a **Steam-themed** (dark blue gradient, Steam accent colours),
-multi-section dashboard. Each analytical section has its **own filters for
-title, publisher, country and date**:
+`app.py` is a **Power BI-style, Steam-themed** dashboard (a blue/purple gradient
+matching Steam's "Dark Blue & Purple" profile theme). It has a left **"Pages"
+navigation** and, on the analytical pages, **compact dropdown filters** (Title /
+Publisher / Country / Date) so a single title list never floods the screen.
 
-- **🏠 Overview** — headline KPIs, live concurrent-player leaders, and total
-  active players by date.
-- **🎮 Title Usage** — usage (player-hours) of each title **by date** as a
-  professional multi-series line graph, plus total usage by title (bar) and
-  usage share by country (donut).
+- **🧠 Summary** — an **agentic** page: headline KPIs plus an "AI-generated
+  insights" panel that is computed from the data on every run (trend direction,
+  weekend seasonality, top title/market, best-received genre, free-vs-paid mix),
+  with a players-by-date trend and a players-by-market donut.
+- **📈 Title Usage Overview** — usage (player-hours) of each title **by date** as
+  a multi-series line graph, plus total usage by title and usage share by country.
+- **📋 Title Usage by Metric** — a Power BI-style **table** (TitleName /
+  TotalHours / TotalSessions / UniqueUsers) with a Genre selector and the
+  dropdown filters, plus **Top 5 titles** bar charts by sessions, play hours and
+  unique users.
 - **👥 Active Players** — number of users playing each title **by date** (line),
-  players by country (bar), average daily players by title (bar), and a stacked
-  daily-players-by-country chart.
-- **📊 Market Snapshot** — reception vs. audience size, price distribution, and
-  genre breakdowns (with genre / price / publisher filters).
-- **✅ Data quality** — the full quality report with an overall pass/fail badge.
+  players by country (bar), and a stacked daily-players-by-country chart.
+- **🎯 Genre Distribution** — games and live players per genre, and players by
+  genre over time.
+- **📊 Market Snapshot** — reception vs. audience size, price distribution and
+  top games (with genre / price / publisher dropdowns).
+- **✅ Data Quality** — the full quality report with an overall pass/fail badge.
 - **🗂️ Data** — the processed snapshot and modeled usage tables, with CSV export.
 
 The theme is set via [`.streamlit/config.toml`](.streamlit/config.toml) plus
-custom CSS, and all charts use a shared Steam colour palette and dark template.
+custom CSS, and all charts use a shared blue/purple palette and dark template.
 
 ---
 

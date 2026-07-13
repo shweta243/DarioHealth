@@ -11,7 +11,7 @@ result is fully reproducible across runs, and it is documented as modeled in
 the README and surfaced with a caption in the dashboard.
 
 Output columns (``usage_daily.csv``):
-    date, appid, name, publisher, primary_genre, country, players, usage_hours
+    date, appid, name, publisher, primary_genre, country, players, sessions, usage_hours
 """
 from __future__ import annotations
 
@@ -53,6 +53,8 @@ def build_usage_daily(
             else 0.0
         )
         session_hours = float(np.clip(median_h / 10 if median_h > 0 else 1.5, 0.5, 4.0))
+        # Average number of sessions a user starts per day for this title.
+        sessions_per_user = float(np.clip(rng.normal(1.6, 0.3), 1.0, 3.0))
         trend = rng.uniform(-0.15, 0.20)  # gentle rise/decline over the window
 
         for i, day in enumerate(dates):
@@ -69,6 +71,13 @@ def build_usage_daily(
                 players = int(round(global_players * share))
                 if players <= 0:
                     continue
+                sessions = int(
+                    round(
+                        players
+                        * sessions_per_user
+                        * float(np.clip(rng.normal(1.0, 0.05), 0.85, 1.15))
+                    )
+                )
                 usage_hours = round(
                     players
                     * session_hours
@@ -84,6 +93,7 @@ def build_usage_daily(
                         "primary_genre": g["primary_genre"],
                         "country": cname,
                         "players": players,
+                        "sessions": sessions,
                         "usage_hours": usage_hours,
                     }
                 )

@@ -1,12 +1,9 @@
-"""Steam Games Insights - professional Steam-themed Streamlit dashboard.
+"""Steam Games Insights - Power BI-style analytics dashboard.
 
-Reads the processed outputs produced by ``etl.py`` and presents them across
-distinct, business-facing sections with a Steam visual theme:
-
-    Overview  |  Title Usage  |  Active Players  |  Market Snapshot
-    Data Quality  |  Data
-
-Each analytical section has its own filters (title, publisher, country, date).
+A multi-page, Steam-themed (blue/purple) dashboard with a left "Pages"
+navigation, compact dropdown filters, a title-usage table with
+TotalHours / TotalSessions / UniqueUsers, Top-5 bar charts, and an
+agentic Summary page that narrates the key insights from the data.
 
 Run:
     streamlit run app.py
@@ -14,6 +11,7 @@ Run:
 from __future__ import annotations
 
 import json
+import re
 
 import pandas as pd
 import plotly.express as px
@@ -22,67 +20,100 @@ import streamlit as st
 from src import config
 
 st.set_page_config(
-    page_title="Steam Games Insights",
+    page_title="Steam Cloud Analytics",
     page_icon="🎮",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 
 # --------------------------------------------------------------------------
-# Steam theme
+# Steam "Dark Blue & Purple" theme
 # --------------------------------------------------------------------------
 STEAM_COLORS = [
-    "#66c0f4", "#1a9fff", "#a4d007", "#5c7e10", "#e74c3c", "#f1c40f",
-    "#c586c0", "#00a5a5", "#ff7b00", "#8f98a0", "#4b6b8a", "#b8b6b4",
+    "#66c0f4", "#8f6fff", "#4fb0ff", "#a679ff", "#37c6d0", "#5c7cff",
+    "#c58bff", "#2aa7ff", "#7f5af0", "#00d4ff", "#9d7bff", "#3d5afe",
 ]
+ACCENT = "#66c0f4"
+PURPLE = "#a679ff"
 
 STEAM_CSS = """
 <style>
 .stApp {
-  background: radial-gradient(1100px 550px at 18% -12%, #2a475e 0%, rgba(42,71,94,0) 60%),
-              linear-gradient(180deg, #1b2838 0%, #10161d 100%);
+  background:
+    radial-gradient(1000px 600px at 50% -8%, #33507a 0%, rgba(51,80,122,0) 55%),
+    radial-gradient(900px 700px at 100% 105%, #3a2b5e 0%, rgba(58,43,94,0) 52%),
+    linear-gradient(160deg, #1b2838 0%, #172033 45%, #191533 100%);
+  background-attachment: fixed;
 }
 [data-testid="stHeader"] { background: rgba(0,0,0,0); }
-section[data-testid="stSidebar"] { background: #171a21; }
-.hero {
-  background: linear-gradient(90deg, rgba(102,192,244,0.20), rgba(26,159,255,0.04));
-  border: 1px solid rgba(102,192,244,0.28);
-  border-radius: 14px; padding: 20px 24px; margin-bottom: 10px;
+section[data-testid="stSidebar"] {
+  background: linear-gradient(180deg, #141b2b 0%, #17132a 100%);
+  border-right: 1px solid rgba(102,192,244,0.15);
 }
-.hero h1 { color: #ffffff; margin: 0; font-size: 2rem; letter-spacing: .5px; }
-.hero p { color: #8f98a0; margin: 6px 0 0 0; }
+/* Sidebar "Pages" nav styled as menu items */
+section[data-testid="stSidebar"] div[role="radiogroup"] label {
+  display: flex; align-items: center;
+  padding: 9px 12px; margin: 2px 0; border-radius: 8px;
+  color: #c7d5e0; cursor: pointer; transition: background .15s;
+}
+section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {
+  background: rgba(102,192,244,0.08);
+}
+section[data-testid="stSidebar"] div[role="radiogroup"] label:has(input:checked) {
+  background: linear-gradient(90deg, rgba(102,192,244,0.20), rgba(166,121,255,0.12));
+  border-left: 3px solid #66c0f4;
+}
+section[data-testid="stSidebar"] div[role="radiogroup"] label > div:first-child { display:none; }
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  background: linear-gradient(90deg, rgba(102,192,244,0.12), rgba(166,121,255,0.08));
+  border: 1px solid rgba(102,192,244,0.22);
+  border-radius: 12px; padding: 14px 20px; margin-bottom: 14px;
+}
+.brand { color:#66c0f4; font-weight:700; letter-spacing:1.5px; font-size:.9rem; }
+.brand-mark {
+  display:inline-block; background:#66c0f4; color:#0b1220; border-radius:6px;
+  padding:0 7px; margin-right:8px; font-size:.85rem;
+}
+.page-title { color:#eaf2fb; font-size:1.5rem; font-weight:600; letter-spacing:.5px; }
 [data-testid="stMetric"] {
-  background: linear-gradient(180deg, #2a475e 0%, #1b2838 100%);
+  background: linear-gradient(180deg, #24314a 0%, #1b2338 100%);
   border: 1px solid rgba(102,192,244,0.22);
   border-radius: 12px; padding: 14px 16px;
 }
-[data-testid="stMetricValue"] { color: #66c0f4; }
-[data-testid="stMetricLabel"] { color: #8f98a0; }
-.stTabs [data-baseweb="tab-list"] { gap: 6px; }
-.stTabs [data-baseweb="tab"] {
-  background: #1b2838; border-radius: 8px 8px 0 0; padding: 8px 16px; color: #c7d5e0;
+[data-testid="stMetricValue"] { color:#66c0f4; }
+[data-testid="stMetricLabel"] { color:#9fb0c3; }
+.insight-card {
+  background: linear-gradient(180deg, rgba(36,49,74,0.7), rgba(25,21,51,0.7));
+  border: 1px solid rgba(166,121,255,0.28);
+  border-radius: 12px; padding: 16px 20px; margin-top: 6px;
 }
-.stTabs [aria-selected="true"] { background: #2a475e; color: #66c0f4; }
-.section-note { color: #6d7986; font-size: 0.82rem; }
+.insight-card ul { margin:0; padding-left:18px; }
+.insight-card li { color:#d6e2f0; margin:7px 0; line-height:1.5; }
+.filter-label { color:#8b9ab0; font-size:.78rem; letter-spacing:.6px; margin-bottom:2px; }
+.note { color:#6d7c90; font-size:.8rem; }
+div[data-testid="stPopover"] > button {
+  background:#1e2942; border:1px solid rgba(102,192,244,0.28); color:#c7d5e0;
+}
 </style>
 """
 st.markdown(STEAM_CSS, unsafe_allow_html=True)
 
 
-def style_fig(fig, height: int = 420, legend: bool = True):
-    """Apply the Steam dark visual theme to a Plotly figure."""
+def style_fig(fig, height: int = 400, legend: bool = True):
     fig.update_layout(
         height=height,
         template="plotly_dark",
         paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(23,40,56,0.35)",
+        plot_bgcolor="rgba(20,27,43,0.45)",
         font=dict(color="#c7d5e0", family="Arial"),
         title_text="",
-        legend=dict(bgcolor="rgba(0,0,0,0)", title_font_color="#8f98a0"),
-        margin=dict(l=10, r=10, t=40, b=10),
+        legend=dict(bgcolor="rgba(0,0,0,0)", title_font_color="#8b9ab0"),
+        margin=dict(l=10, r=10, t=36, b=10),
         showlegend=legend,
         colorway=STEAM_COLORS,
     )
-    grid = "rgba(102,192,244,0.12)"
+    grid = "rgba(102,192,244,0.10)"
     fig.update_xaxes(gridcolor=grid, zeroline=False)
     fig.update_yaxes(gridcolor=grid, zeroline=False)
     return fig
@@ -107,230 +138,352 @@ def load_data():
 
 games, genre_summary, usage, report = load_data()
 
-st.markdown(
-    '<div class="hero"><h1>🎮 Steam Games Insights</h1>'
-    "<p>Analytics on the most-played Steam games &mdash; powered by the free, "
-    "keyless SteamSpy API.</p></div>",
-    unsafe_allow_html=True,
-)
-
-if games is None or usage is None:
-    st.warning(
-        "No processed data found. Please run the ETL pipeline first:\n\n"
-        "```bash\npython etl.py\n```"
-    )
-    st.stop()
-
 
 # --------------------------------------------------------------------------
-# Reusable per-section filter UI (title, publisher, country, date)
+# Compact dropdown filter helpers (popover-based)
 # --------------------------------------------------------------------------
+def dd_multi(label: str, options: list, default: list, key: str) -> list:
+    """Compact multi-select rendered inside a popover 'dropdown' button."""
+    current = st.session_state.get(key, default)
+    with st.popover(f"{label}  ·  {len(current)}/{len(options)}"):
+        sel = st.multiselect(label, options, default=default, key=key,
+                             label_visibility="collapsed")
+    return sel or default
+
+
 def usage_filters(df: pd.DataFrame, key: str, default_titles: int = 8) -> pd.DataFrame:
-    """Render a filter row for a usage section and return the filtered frame."""
-    with st.expander("🔎 Filters — title · publisher · country · date", expanded=True):
-        c1, c2, c3, c4 = st.columns(4)
-        titles_all = sorted(df["name"].unique())
-        top_titles = (
-            df.groupby("name")["players"].sum()
-            .sort_values(ascending=False)
-            .head(default_titles)
-            .index.tolist()
-        )
-        with c1:
-            sel_titles = st.multiselect(
-                "Title", titles_all, default=top_titles, key=f"title_{key}"
-            )
-        with c2:
-            pubs = sorted(df["publisher"].unique())
-            sel_pubs = st.multiselect(
-                "Publisher", pubs, default=pubs, key=f"pub_{key}"
-            )
-        with c3:
-            countries = sorted(df["country"].unique())
-            sel_countries = st.multiselect(
-                "Country", countries, default=countries, key=f"country_{key}"
-            )
-        with c4:
-            dmin, dmax = df["date"].min().date(), df["date"].max().date()
-            dr = st.date_input(
-                "Date range", (dmin, dmax), min_value=dmin, max_value=dmax,
-                key=f"date_{key}",
-            )
-
+    """A compact filter bar (Title / Publisher / Country / Date) for a page."""
+    st.markdown('<div class="filter-label">FILTERS</div>', unsafe_allow_html=True)
+    c1, c2, c3, c4 = st.columns([1, 1, 1, 1.4])
+    titles = sorted(df["name"].unique())
+    top_titles = (
+        df.groupby("name")["players"].sum().sort_values(ascending=False)
+        .head(default_titles).index.tolist()
+    )
+    pubs = sorted(df["publisher"].unique())
+    countries = sorted(df["country"].unique())
+    with c1:
+        sel_t = dd_multi("🎮 Title", titles, top_titles, f"t_{key}")
+    with c2:
+        sel_p = dd_multi("🏢 Publisher", pubs, pubs, f"p_{key}")
+    with c3:
+        sel_c = dd_multi("🌍 Country", countries, countries, f"c_{key}")
+    with c4:
+        dmin, dmax = df["date"].min().date(), df["date"].max().date()
+        dr = st.date_input("📅 Date range", (dmin, dmax), min_value=dmin,
+                           max_value=dmax, key=f"d_{key}")
     start, end = (dr if isinstance(dr, tuple) and len(dr) == 2 else (dmin, dmax))
-    if not sel_titles:
-        sel_titles = top_titles
     mask = (
-        df["name"].isin(sel_titles)
-        & df["publisher"].isin(sel_pubs or df["publisher"].unique())
-        & df["country"].isin(sel_countries or df["country"].unique())
+        df["name"].isin(sel_t)
+        & df["publisher"].isin(sel_p)
+        & df["country"].isin(sel_c)
         & df["date"].dt.date.between(start, end)
     )
     return df.loc[mask].copy()
 
 
 # --------------------------------------------------------------------------
-# Header KPIs (snapshot)
+# Agentic summary (insights computed from the data)
 # --------------------------------------------------------------------------
-k1, k2, k3, k4, k5 = st.columns(5)
-k1.metric("Games tracked", len(games))
-k2.metric("Avg review score", f"{games['review_ratio'].mean():.0f}%")
-k3.metric("Live players (CCU)", f"{int(games['ccu'].sum()):,}")
-k4.metric("Countries modeled", usage["country"].nunique())
-k5.metric("Days of usage", usage["date"].dt.date.nunique())
+def build_insights(games: pd.DataFrame, usage: pd.DataFrame,
+                   genre_summary: pd.DataFrame) -> list[str]:
+    out: list[str] = []
+    daily = usage.groupby("date")["players"].sum().sort_index()
+    if len(daily) >= 4:
+        half = len(daily) // 2
+        first, last = daily.iloc[:half].mean(), daily.iloc[half:].mean()
+        pct = (last - first) / first * 100 if first else 0
+        arrow = "📈 up" if pct >= 0 else "📉 down"
+        out.append(
+            f"Total active players are trending {arrow} **{abs(pct):.1f}%** across "
+            f"the {len(daily)}-day window."
+        )
+    wk = usage.assign(dow=usage["date"].dt.dayofweek)
+    we, wd = wk[wk["dow"] >= 5]["players"].mean(), wk[wk["dow"] < 5]["players"].mean()
+    if wd:
+        out.append(
+            f"Weekend engagement runs **{(we - wd) / wd * 100:.0f}% higher** than "
+            f"weekdays — plan events and releases accordingly."
+        )
+    tp = usage.groupby("name")["players"].sum().sort_values(ascending=False)
+    th = usage.groupby("name")["usage_hours"].sum().sort_values(ascending=False)
+    out.append(
+        f"**{tp.index[0]}** draws the largest modeled audience, while "
+        f"**{th.index[0]}** leads on total engagement (player-hours)."
+    )
+    tc = usage.groupby("country")["players"].sum().sort_values(ascending=False)
+    out.append(
+        f"**{tc.index[0]}** is the top market (~{tc.iloc[0] / tc.sum() * 100:.0f}% "
+        f"of players), followed by **{tc.index[1]}** and **{tc.index[2]}**."
+    )
+    now = games.sort_values("ccu", ascending=False).iloc[0]
+    out.append(
+        f"Live right now: **{now['name']}** leads concurrency with "
+        f"**{int(now['ccu']):,}** players and a {now['review_ratio']:.0f}% review score."
+    )
+    if genre_summary is not None and not genre_summary.empty:
+        bg = genre_summary.sort_values("avg_review_ratio", ascending=False).iloc[0]
+        out.append(
+            f"**{bg['primary_genre']}** is the best-received genre "
+            f"(avg {bg['avg_review_ratio']:.0f}% positive)."
+        )
+    free = games["is_free"].mean() * 100
+    out.append(
+        f"**{free:.0f}%** of tracked titles are free-to-play; the median paid price "
+        f"is **${games.loc[~games['is_free'], 'price_usd'].median():.2f}**."
+    )
+    return out
 
-st.divider()
 
-tab_overview, tab_usage, tab_players, tab_market, tab_quality, tab_data = st.tabs(
-    [
-        "🏠 Overview",
-        "🎮 Title Usage",
-        "👥 Active Players",
-        "📊 Market Snapshot",
-        "✅ Data Quality",
-        "🗂️ Data",
-    ]
+# --------------------------------------------------------------------------
+# Sidebar "Pages" navigation
+# --------------------------------------------------------------------------
+st.sidebar.markdown(
+    '<div style="padding:6px 4px 12px 4px;">'
+    '<span class="brand"><span class="brand-mark">▶</span>STEAM · CLOUD</span>'
+    "</div>",
+    unsafe_allow_html=True,
+)
+st.sidebar.markdown('<div class="filter-label">PAGES</div>', unsafe_allow_html=True)
+
+PAGES = [
+    "🧠  Summary",
+    "📈  Title Usage Overview",
+    "📋  Title Usage by Metric",
+    "👥  Active Players",
+    "🎯  Genre Distribution",
+    "📊  Market Snapshot",
+    "✅  Data Quality",
+    "🗂️  Data",
+]
+page = st.sidebar.radio("Pages", PAGES, label_visibility="collapsed")
+st.sidebar.markdown(
+    '<div class="note" style="margin-top:18px;">Daily &amp; country figures are '
+    "modeled estimates derived from the SteamSpy snapshot.</div>",
+    unsafe_allow_html=True,
 )
 
-# ==========================================================================
-# OVERVIEW
-# ==========================================================================
-with tab_overview:
-    st.subheader("Live concurrent players — top 15")
-    top_ccu = games.sort_values("ccu", ascending=False).head(15)
-    fig = px.bar(
-        top_ccu, x="ccu", y="name", orientation="h",
-        labels={"ccu": "Concurrent players", "name": ""},
-        color="ccu", color_continuous_scale=["#1a3a5c", "#66c0f4"],
-    )
-    fig.update_layout(yaxis={"categoryorder": "total ascending"}, coloraxis_showscale=False)
-    st.plotly_chart(style_fig(fig, 480, legend=False), width="stretch")
+if games is None or usage is None:
+    st.warning("No processed data found. Run `python etl.py` first.")
+    st.stop()
 
-    st.subheader("Total active players by date (all tracked titles)")
-    daily_total = usage.groupby("date", as_index=False)["players"].sum()
-    fig = px.area(daily_total, x="date", y="players", labels={"players": "Players", "date": ""})
-    fig.update_traces(line_color="#66c0f4", fillcolor="rgba(102,192,244,0.20)")
-    st.plotly_chart(style_fig(fig, 340, legend=False), width="stretch")
+
+def topbar(title: str):
     st.markdown(
-        '<span class="section-note">Daily &amp; country figures are modeled '
-        "estimates derived from the SteamSpy snapshot (see README).</span>",
+        f'<div class="topbar"><div class="brand"><span class="brand-mark">▶</span>'
+        f"STEAM · CLOUD ANALYTICS</div>"
+        f'<div class="page-title">{title}</div></div>',
         unsafe_allow_html=True,
     )
 
+
+page_name = page.strip()
+
 # ==========================================================================
-# TITLE USAGE OVERVIEW  (usage of each game by date)
+# PAGE: SUMMARY (agentic)
 # ==========================================================================
-with tab_usage:
-    st.subheader("Title usage overview")
-    st.caption("Engagement (player-hours) for each title over time.")
-    f = usage_filters(usage, key="usage")
+if page_name.endswith("Summary"):
+    topbar("EXECUTIVE SUMMARY")
+    k1, k2, k3, k4, k5 = st.columns(5)
+    k1.metric("Games tracked", len(games))
+    k2.metric("Live players (CCU)", f"{int(games['ccu'].sum()):,}")
+    k3.metric("Avg review score", f"{games['review_ratio'].mean():.0f}%")
+    k4.metric("Total player-hours", f"{usage['usage_hours'].sum() / 1e6:.1f}M")
+    k5.metric("Markets", usage["country"].nunique())
+
+    st.markdown("### 🤖 AI-generated insights")
+    insights = build_insights(games, usage, genre_summary)
+    insights_html = [re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", i) for i in insights]
+    st.markdown(
+        '<div class="insight-card"><ul>'
+        + "".join(f"<li>{i}</li>" for i in insights_html)
+        + "</ul></div>",
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "Insights are generated automatically from the processed data each run "
+        "(trend, seasonality, market mix, reception, pricing)."
+    )
+
+    c1, c2 = st.columns([3, 2])
+    with c1:
+        st.markdown("#### Total active players by date")
+        daily = usage.groupby("date", as_index=False)["players"].sum()
+        fig = px.area(daily, x="date", y="players", labels={"players": "Players", "date": ""})
+        fig.update_traces(line_color=ACCENT, fillcolor="rgba(102,192,244,0.18)")
+        st.plotly_chart(style_fig(fig, 320, legend=False), width="stretch")
+    with c2:
+        st.markdown("#### Players by market")
+        by_c = usage.groupby("country", as_index=False)["players"].sum()
+        fig = px.pie(by_c, names="country", values="players", hole=0.5,
+                     color_discrete_sequence=STEAM_COLORS)
+        st.plotly_chart(style_fig(fig, 320), width="stretch")
+
+# ==========================================================================
+# PAGE: TITLE USAGE OVERVIEW
+# ==========================================================================
+elif page_name.endswith("Overview"):
+    topbar("TITLE USAGE OVERVIEW")
+    f = usage_filters(usage, key="overview")
     if f.empty:
         st.info("No data for the selected filters.")
     else:
+        st.markdown("#### Usage (player-hours) by date")
         by_date = f.groupby(["date", "name"], as_index=False)["usage_hours"].sum()
-        fig = px.line(
-            by_date, x="date", y="usage_hours", color="name", markers=False,
-            labels={"usage_hours": "Usage (player-hours)", "date": "", "name": "Title"},
-        )
+        fig = px.line(by_date, x="date", y="usage_hours", color="name",
+                      labels={"usage_hours": "Player-hours", "date": "", "name": "Title"})
         fig.update_traces(line=dict(width=2.4))
-        st.plotly_chart(style_fig(fig, 460), width="stretch")
+        st.plotly_chart(style_fig(fig, 440), width="stretch")
 
         c1, c2 = st.columns([3, 2])
         with c1:
-            st.subheader("Total usage by title")
-            totals = (
-                f.groupby("name", as_index=False)["usage_hours"].sum()
-                .sort_values("usage_hours")
-            )
-            figb = px.bar(
-                totals, x="usage_hours", y="name", orientation="h",
-                labels={"usage_hours": "Usage (player-hours)", "name": ""},
-                color="usage_hours", color_continuous_scale=["#1a3a5c", "#66c0f4"],
-            )
-            figb.update_layout(coloraxis_showscale=False)
-            st.plotly_chart(style_fig(figb, 420, legend=False), width="stretch")
+            st.markdown("#### Total usage by title")
+            totals = f.groupby("name", as_index=False)["usage_hours"].sum().sort_values("usage_hours")
+            fig = px.bar(totals, x="usage_hours", y="name", orientation="h",
+                         labels={"usage_hours": "Player-hours", "name": ""},
+                         color="usage_hours", color_continuous_scale=["#22345a", ACCENT])
+            fig.update_layout(coloraxis_showscale=False)
+            st.plotly_chart(style_fig(fig, 420, legend=False), width="stretch")
         with c2:
-            st.subheader("Usage share by country")
-            by_country = (
-                f.groupby("country", as_index=False)["usage_hours"].sum()
-                .sort_values("usage_hours", ascending=False)
-            )
-            figc = px.pie(
-                by_country, names="country", values="usage_hours", hole=0.45,
-                color_discrete_sequence=STEAM_COLORS,
-            )
-            st.plotly_chart(style_fig(figc, 420), width="stretch")
+            st.markdown("#### Usage share by country")
+            by_c = f.groupby("country", as_index=False)["usage_hours"].sum()
+            fig = px.pie(by_c, names="country", values="usage_hours", hole=0.5,
+                         color_discrete_sequence=STEAM_COLORS)
+            st.plotly_chart(style_fig(fig, 420), width="stretch")
 
 # ==========================================================================
-# ACTIVE PLAYERS BY DATE  (number of users playing by date)
+# PAGE: TITLE USAGE BY METRIC  (Power BI-style table + Top 5 charts)
 # ==========================================================================
-with tab_players:
-    st.subheader("Active players by date")
-    st.caption("Estimated number of users playing each title over time.")
+elif page_name.endswith("by Metric"):
+    topbar("TITLE USAGE BY METRIC")
+
+    # "Modality"-style dropdown = Genre, plus the standard filters.
+    gcol, _ = st.columns([1, 3])
+    with gcol:
+        genres = ["All genres"] + sorted(usage["primary_genre"].dropna().unique())
+        sel_genre = st.selectbox("Genre", genres, key="metric_genre")
+    base = usage if sel_genre == "All genres" else usage[usage["primary_genre"] == sel_genre]
+    f = usage_filters(base, key="metric", default_titles=30)
+
+    if f.empty:
+        st.info("No data for the selected filters.")
+    else:
+        daily = f.groupby(["name", "date"], as_index=False).agg(
+            players=("players", "sum"),
+            sessions=("sessions", "sum"),
+            hours=("usage_hours", "sum"),
+        )
+        table = daily.groupby("name", as_index=False).agg(
+            TotalHours=("hours", "sum"),
+            TotalSessions=("sessions", "sum"),
+            PeakDAU=("players", "max"),
+        )
+        table["UniqueUsers"] = (table["PeakDAU"] * 1.5).round().astype(int)
+        table["TotalHours"] = table["TotalHours"].round().astype(int)
+        table = table.rename(columns={"name": "TitleName"})[
+            ["TitleName", "TotalHours", "TotalSessions", "UniqueUsers"]
+        ].sort_values("TotalHours", ascending=False)
+
+        st.markdown("#### Title usage table")
+        st.dataframe(
+            table, width="stretch", hide_index=True, height=360,
+            column_config={
+                "TotalHours": st.column_config.NumberColumn("Total Hours", format="%d"),
+                "TotalSessions": st.column_config.NumberColumn("Total Sessions", format="%d"),
+                "UniqueUsers": st.column_config.NumberColumn("Unique Users", format="%d"),
+            },
+        )
+
+        st.markdown("#### Top 5 titles")
+        c1, c2, c3 = st.columns(3)
+        specs = [
+            (c1, "TotalSessions", "by number of sessions", ACCENT),
+            (c2, "TotalHours", "by game play hours", PURPLE),
+            (c3, "UniqueUsers", "by unique users", "#37c6d0"),
+        ]
+        for col, metric, caption, color in specs:
+            with col:
+                st.markdown(f"**Top 5 {caption}**")
+                top5 = table.nlargest(5, metric)
+                fig = px.bar(top5, x="TitleName", y=metric,
+                             labels={"TitleName": "", metric: ""})
+                fig.update_traces(marker_color=color)
+                fig.update_xaxes(tickangle=-40)
+                st.plotly_chart(style_fig(fig, 320, legend=False), width="stretch")
+
+# ==========================================================================
+# PAGE: ACTIVE PLAYERS
+# ==========================================================================
+elif page_name.endswith("Active Players"):
+    topbar("ACTIVE PLAYERS BY DATE")
     f = usage_filters(usage, key="players")
     if f.empty:
         st.info("No data for the selected filters.")
     else:
+        st.markdown("#### Active players by date")
         by_date = f.groupby(["date", "name"], as_index=False)["players"].sum()
-        fig = px.line(
-            by_date, x="date", y="players", color="name",
-            labels={"players": "Active players", "date": "", "name": "Title"},
-        )
+        fig = px.line(by_date, x="date", y="players", color="name",
+                      labels={"players": "Active players", "date": "", "name": "Title"})
         fig.update_traces(line=dict(width=2.4))
-        st.plotly_chart(style_fig(fig, 460), width="stretch")
+        st.plotly_chart(style_fig(fig, 440), width="stretch")
 
         c1, c2 = st.columns(2)
         with c1:
-            st.subheader("Players by country")
-            by_country = (
-                f.groupby("country", as_index=False)["players"].sum()
-                .sort_values("players")
-            )
-            figb = px.bar(
-                by_country, x="players", y="country", orientation="h",
-                labels={"players": "Active players", "country": ""},
-                color="players", color_continuous_scale=["#1a3a5c", "#66c0f4"],
-            )
-            figb.update_layout(coloraxis_showscale=False)
-            st.plotly_chart(style_fig(figb, 420, legend=False), width="stretch")
+            st.markdown("#### Players by country")
+            by_c = f.groupby("country", as_index=False)["players"].sum().sort_values("players")
+            fig = px.bar(by_c, x="players", y="country", orientation="h",
+                         labels={"players": "Active players", "country": ""},
+                         color="players", color_continuous_scale=["#22345a", ACCENT])
+            fig.update_layout(coloraxis_showscale=False)
+            st.plotly_chart(style_fig(fig, 420, legend=False), width="stretch")
         with c2:
-            st.subheader("Average daily players by title")
-            avg_players = (
-                f.groupby(["date", "name"])["players"].sum().reset_index()
-                .groupby("name", as_index=False)["players"].mean()
-                .sort_values("players")
-            )
-            figc = px.bar(
-                avg_players, x="players", y="name", orientation="h",
-                labels={"players": "Avg daily players", "name": ""},
-                color="players", color_continuous_scale=["#1a3a5c", "#a4d007"],
-            )
-            figc.update_layout(coloraxis_showscale=False)
-            st.plotly_chart(style_fig(figc, 420, legend=False), width="stretch")
-
-        st.subheader("Daily players by country (stacked)")
-        stacked = f.groupby(["date", "country"], as_index=False)["players"].sum()
-        figs = px.bar(
-            stacked, x="date", y="players", color="country",
-            labels={"players": "Active players", "date": "", "country": "Country"},
-        )
-        st.plotly_chart(style_fig(figs, 420), width="stretch")
+            st.markdown("#### Daily players by country (stacked)")
+            stacked = f.groupby(["date", "country"], as_index=False)["players"].sum()
+            fig = px.bar(stacked, x="date", y="players", color="country",
+                         labels={"players": "Active players", "date": "", "country": "Country"})
+            st.plotly_chart(style_fig(fig, 420), width="stretch")
 
 # ==========================================================================
-# MARKET SNAPSHOT  (reception, pricing, genres)
+# PAGE: GENRE DISTRIBUTION
 # ==========================================================================
-with tab_market:
-    st.subheader("Market snapshot")
-    with st.expander("🔎 Filters — genre · price · publisher", expanded=True):
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            genres = sorted(games["primary_genre"].dropna().unique())
-            sel_g = st.multiselect("Genre", genres, default=genres, key="mkt_genre")
-        with c2:
-            price_type = st.radio("Price type", ["All", "Free", "Paid"], key="mkt_price")
-        with c3:
-            pubs = sorted(games["publisher"].dropna().unique())
-            sel_p = st.multiselect("Publisher", pubs, default=pubs, key="mkt_pub")
+elif page_name.endswith("Distribution"):
+    topbar("GENRE DISTRIBUTION")
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("#### Games per genre")
+        fig = px.bar(genre_summary.sort_values("games"), x="games", y="primary_genre",
+                     orientation="h", labels={"games": "Games", "primary_genre": ""},
+                     color="games", color_continuous_scale=["#22345a", PURPLE])
+        fig.update_layout(coloraxis_showscale=False)
+        st.plotly_chart(style_fig(fig, 400, legend=False), width="stretch")
+    with c2:
+        st.markdown("#### Live players by genre")
+        fig = px.bar(genre_summary.sort_values("total_ccu"), x="total_ccu", y="primary_genre",
+                     orientation="h", labels={"total_ccu": "Concurrent players", "primary_genre": ""},
+                     color="total_ccu", color_continuous_scale=["#22345a", ACCENT])
+        fig.update_layout(coloraxis_showscale=False)
+        st.plotly_chart(style_fig(fig, 400, legend=False), width="stretch")
+
+    st.markdown("#### Players by genre over time (modeled)")
+    by = usage.groupby(["date", "primary_genre"], as_index=False)["players"].sum()
+    fig = px.area(by, x="date", y="players", color="primary_genre",
+                  labels={"players": "Active players", "date": "", "primary_genre": "Genre"})
+    st.plotly_chart(style_fig(fig, 380), width="stretch")
+
+# ==========================================================================
+# PAGE: MARKET SNAPSHOT
+# ==========================================================================
+elif page_name.endswith("Market Snapshot"):
+    topbar("MARKET SNAPSHOT")
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        genres = sorted(games["primary_genre"].dropna().unique())
+        sel_g = dd_multi("🎯 Genre", genres, genres, "mkt_g")
+    with c2:
+        price_type = st.selectbox("💵 Price type", ["All", "Free", "Paid"], key="mkt_price")
+    with c3:
+        pubs = sorted(games["publisher"].dropna().unique())
+        sel_p = dd_multi("🏢 Publisher", pubs, pubs, "mkt_p")
 
     gv = games[games["primary_genre"].isin(sel_g) & games["publisher"].isin(sel_p)].copy()
     if price_type == "Free":
@@ -343,50 +496,34 @@ with tab_market:
     else:
         c1, c2 = st.columns(2)
         with c1:
-            st.subheader("Reception vs. audience size")
-            fig = px.scatter(
-                gv, x="owners_mid", y="review_ratio", size="ccu",
-                color="primary_genre", hover_name="name", log_x=True,
-                labels={"owners_mid": "Estimated owners", "review_ratio": "Positive %"},
-            )
-            st.plotly_chart(style_fig(fig, 430), width="stretch")
+            st.markdown("#### Reception vs. audience size")
+            fig = px.scatter(gv, x="owners_mid", y="review_ratio", size="ccu",
+                             color="primary_genre", hover_name="name", log_x=True,
+                             labels={"owners_mid": "Estimated owners", "review_ratio": "Positive %"})
+            st.plotly_chart(style_fig(fig, 420), width="stretch")
         with c2:
-            st.subheader("Price distribution (paid)")
+            st.markdown("#### Price distribution (paid)")
             paid = gv[~gv["is_free"]]
             if paid.empty:
                 st.info("No paid games in this selection.")
             else:
                 fig = px.histogram(paid, x="price_usd", nbins=20, labels={"price_usd": "Price (USD)"})
-                fig.update_traces(marker_color="#66c0f4")
-                st.plotly_chart(style_fig(fig, 430, legend=False), width="stretch")
+                fig.update_traces(marker_color=PURPLE)
+                st.plotly_chart(style_fig(fig, 420, legend=False), width="stretch")
 
-        gsel = genre_summary[genre_summary["primary_genre"].isin(sel_g)]
-        c3, c4 = st.columns(2)
-        with c3:
-            st.subheader("Live players by genre")
-            fig = px.bar(
-                gsel.sort_values("total_ccu"), x="total_ccu", y="primary_genre",
-                orientation="h", labels={"total_ccu": "Concurrent players", "primary_genre": ""},
-                color="total_ccu", color_continuous_scale=["#1a3a5c", "#66c0f4"],
-            )
-            fig.update_layout(coloraxis_showscale=False)
-            st.plotly_chart(style_fig(fig, 400, legend=False), width="stretch")
-        with c4:
-            st.subheader("Avg review score by genre")
-            fig = px.bar(
-                gsel.sort_values("avg_review_ratio"), x="avg_review_ratio",
-                y="primary_genre", orientation="h",
-                labels={"avg_review_ratio": "Avg positive %", "primary_genre": ""},
-                color="avg_review_ratio", color_continuous_scale="RdYlGn",
-            )
-            fig.update_layout(coloraxis_showscale=False)
-            st.plotly_chart(style_fig(fig, 400, legend=False), width="stretch")
+        st.markdown("#### Top games by live concurrent players")
+        top = gv.sort_values("ccu", ascending=False).head(15)
+        fig = px.bar(top, x="name", y="ccu", labels={"ccu": "Concurrent players", "name": ""},
+                     color="ccu", color_continuous_scale=["#22345a", ACCENT])
+        fig.update_layout(coloraxis_showscale=False)
+        fig.update_xaxes(tickangle=-40)
+        st.plotly_chart(style_fig(fig, 400, legend=False), width="stretch")
 
 # ==========================================================================
-# DATA QUALITY
+# PAGE: DATA QUALITY
 # ==========================================================================
-with tab_quality:
-    st.subheader("Data quality report")
+elif page_name.endswith("Data Quality"):
+    topbar("DATA QUALITY")
     if report is None:
         st.info("No quality report found. Re-run `python etl.py`.")
     else:
@@ -407,15 +544,16 @@ with tab_quality:
         st.caption(f"Report generated at {report['generated_at']}")
 
 # ==========================================================================
-# DATA
+# PAGE: DATA
 # ==========================================================================
-with tab_data:
-    st.subheader("Processed games (snapshot)")
+else:
+    topbar("DATA")
+    st.markdown("#### Processed games (snapshot)")
     st.dataframe(games, width="stretch", hide_index=True)
-    st.subheader("Modeled daily usage")
+    st.markdown("#### Modeled daily usage")
     st.dataframe(usage.head(1000), width="stretch", hide_index=True)
     st.download_button(
-        "Download usage data (CSV)",
+        "⬇️ Download usage data (CSV)",
         data=usage.to_csv(index=False).encode("utf-8"),
         file_name="usage_daily.csv",
         mime="text/csv",
