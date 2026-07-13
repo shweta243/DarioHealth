@@ -249,6 +249,124 @@ def build_insights(games: pd.DataFrame, usage: pd.DataFrame,
     return out
 
 
+def _pct(cur, prev):
+    return (cur - prev) / prev * 100 if prev else 0.0
+
+
+def insight_card(insights: list[str], title: str = "🤖 AI summary of this section"):
+    """Render a per-section agentic summary card inside an expander."""
+    html = [re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", i) for i in insights]
+    with st.expander(title, expanded=True):
+        st.markdown(
+            '<div class="insight-card"><ul>'
+            + "".join(f"<li>{i}</li>" for i in html)
+            + "</ul></div>",
+            unsafe_allow_html=True,
+        )
+
+
+def insights_worldwide(m: pd.DataFrame) -> list[str]:
+    m = m.sort_values("month_date")
+    latest = m.iloc[-1]
+    yoy = m.iloc[-13] if len(m) >= 13 else m.iloc[0]
+    first = m.iloc[0]
+    peak = m.loc[m["mau"].idxmax()]
+    return [
+        f"Latest month **{latest['month']}**: MAU **{fmt_big(latest['mau'])}** "
+        f"({_pct(latest['mau'], yoy['mau']):+.1f}% YoY) and DAU "
+        f"**{fmt_big(latest['dau'])}** ({_pct(latest['dau'], yoy['dau']):+.1f}% YoY).",
+        f"New users this month: **{fmt_big(latest['new_users'])}** "
+        f"({_pct(latest['new_users'], yoy['new_users']):+.1f}% YoY).",
+        f"MAU has moved **{_pct(latest['mau'], first['mau']):+.0f}%** since "
+        f"{first['month']}, peaking at **{fmt_big(peak['mau'])}** in **{peak['month']}**.",
+        f"Average DAU/MAU stickiness is **{(m['dau'] / m['mau']).mean() * 100:.0f}%**.",
+    ]
+
+
+def insights_usage_overview(f: pd.DataFrame) -> list[str]:
+    th = f.groupby("name")["usage_hours"].sum().sort_values(ascending=False)
+    tc = f.groupby("country")["usage_hours"].sum().sort_values(ascending=False)
+    daily = f.groupby("date")["usage_hours"].sum().sort_index()
+    out = [
+        f"**{th.index[0]}** leads engagement with **{fmt_big(th.iloc[0])}** player-hours.",
+        f"**{tc.index[0]}** accounts for the most usage "
+        f"(~{tc.iloc[0] / tc.sum() * 100:.0f}% of the total).",
+    ]
+    if len(daily) >= 2:
+        out.append(
+            f"Total usage changed **{_pct(daily.iloc[-1], daily.iloc[0]):+.0f}%** "
+            f"across the selected window."
+        )
+    out.append(
+        f"**{f['name'].nunique()}** titles across **{f['country'].nunique()}** "
+        f"countries are in view."
+    )
+    return out
+
+
+def insights_metric(t: pd.DataFrame) -> list[str]:
+    ts = t.sort_values("TotalSessions", ascending=False).iloc[0]
+    th = t.sort_values("TotalHours", ascending=False)
+    tu = t.sort_values("UniqueUsers", ascending=False).iloc[0]
+    top5 = th.head(5)["TotalHours"].sum()
+    total = t["TotalHours"].sum()
+    out = [
+        f"**{ts['TitleName']}** has the most sessions (**{fmt_big(ts['TotalSessions'])}**).",
+        f"**{th.iloc[0]['TitleName']}** leads play hours "
+        f"(**{fmt_big(th.iloc[0]['TotalHours'])}**).",
+        f"**{tu['TitleName']}** has the most unique users (**{fmt_big(tu['UniqueUsers'])}**).",
+    ]
+    if total:
+        out.append(f"The top 5 titles account for **{top5 / total * 100:.0f}%** of play hours.")
+    return out
+
+
+def insights_players(f: pd.DataFrame) -> list[str]:
+    daily = f.groupby("date")["players"].sum().sort_index()
+    tp = f.groupby("name")["players"].sum().sort_values(ascending=False)
+    tc = f.groupby("country")["players"].sum().sort_values(ascending=False)
+    wk = f.assign(dow=f["date"].dt.dayofweek)
+    we, wd = wk[wk["dow"] >= 5]["players"].mean(), wk[wk["dow"] < 5]["players"].mean()
+    out = [
+        f"Peak daily players: **{fmt_big(daily.max())}** on **{daily.idxmax().date()}**.",
+        f"**{tp.index[0]}** draws the most players in the current view.",
+        f"**{tc.index[0]}** is the largest market (~{tc.iloc[0] / tc.sum() * 100:.0f}%).",
+    ]
+    if wd:
+        out.append(f"Weekend activity runs **{_pct(we, wd):+.0f}%** vs. weekdays.")
+    return out
+
+
+def insights_genre(gs: pd.DataFrame) -> list[str]:
+    top = gs.sort_values("total_ccu", ascending=False).iloc[0]
+    most = gs.sort_values("games", ascending=False).iloc[0]
+    best = gs.sort_values("avg_review_ratio", ascending=False).iloc[0]
+    return [
+        f"**{top['primary_genre']}** leads live players (**{fmt_big(top['total_ccu'])}** CCU).",
+        f"**{most['primary_genre']}** has the most titles (**{int(most['games'])}**).",
+        f"**{best['primary_genre']}** is the best-reviewed genre "
+        f"(avg **{best['avg_review_ratio']:.0f}%** positive).",
+    ]
+
+
+def insights_market(gv: pd.DataFrame) -> list[str]:
+    now = gv.sort_values("ccu", ascending=False).iloc[0]
+    br = gv.sort_values("review_ratio", ascending=False).iloc[0]
+    free = gv["is_free"].mean() * 100
+    out = [
+        f"**{now['name']}** leads concurrency (**{fmt_big(now['ccu'])}** players).",
+        f"Best reviewed: **{br['name']}** (**{br['review_ratio']:.0f}%** positive).",
+        f"**{free:.0f}%** of the selection is free-to-play.",
+    ]
+    paid = gv[~gv["is_free"]]
+    if not paid.empty:
+        out.append(
+            f"Paid prices span **${paid['price_usd'].min():.2f}–"
+            f"${paid['price_usd'].max():.2f}** (median **${paid['price_usd'].median():.2f}**)."
+        )
+    return out
+
+
 # --------------------------------------------------------------------------
 # Sidebar "Pages" navigation
 # --------------------------------------------------------------------------
@@ -377,6 +495,8 @@ elif page_name.endswith("Worldwide"):
             "(green ▲ = growth, red ▼ = decline)."
         )
 
+        insight_card(insights_worldwide(m))
+
         # Year filter (compact dropdown) for the year-over-year comparison
         years = sorted(m["year"].unique())
         sel_years = dd_multi("📅 Year", years, years, "ww_year")
@@ -439,6 +559,7 @@ elif page_name.endswith("Overview"):
     if f.empty:
         st.info("No data for the selected filters.")
     else:
+        insight_card(insights_usage_overview(f))
         st.markdown("#### Usage (player-hours) by date")
         by_date = f.groupby(["date", "name"], as_index=False)["usage_hours"].sum()
         fig = px.line(by_date, x="date", y="usage_hours", color="name",
@@ -495,6 +616,8 @@ elif page_name.endswith("by Metric"):
             ["TitleName", "TotalHours", "TotalSessions", "UniqueUsers"]
         ].sort_values("TotalHours", ascending=False)
 
+        insight_card(insights_metric(table))
+
         st.markdown("#### Title usage table")
         st.dataframe(
             table, width="stretch", hide_index=True, height=360,
@@ -531,6 +654,7 @@ elif page_name.endswith("Active Players"):
     if f.empty:
         st.info("No data for the selected filters.")
     else:
+        insight_card(insights_players(f))
         st.markdown("#### Active players by date")
         by_date = f.groupby(["date", "name"], as_index=False)["players"].sum()
         fig = px.line(by_date, x="date", y="players", color="name",
@@ -559,6 +683,7 @@ elif page_name.endswith("Active Players"):
 # ==========================================================================
 elif page_name.endswith("Distribution"):
     topbar("GENRE DISTRIBUTION")
+    insight_card(insights_genre(genre_summary))
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("#### Games per genre")
@@ -605,6 +730,7 @@ elif page_name.endswith("Market Snapshot"):
     if gv.empty:
         st.info("No games match the selected filters.")
     else:
+        insight_card(insights_market(gv))
         c1, c2 = st.columns(2)
         with c1:
             st.markdown("#### Reception vs. audience size")
