@@ -25,26 +25,13 @@ titles. It answers practical questions a games publisher / market analyst asks:
 - *How are titles priced, and what is on sale?*
 - *Which genres dominate players, ownership and ratings?*
 
-**API:** [SteamSpy](https://steamspy.com/api.php) — chosen because it is:
-
-- **Free and keyless** — no signup, no API key, no secrets to configure.
-- **Reproducible for a reviewer** — runs with zero manual data preparation.
-- Rich enough for real analytics: reviews, owners, concurrent users, price,
-  discount, playtime, and (via per-app details) genre and tags.
-
-Two request types are used:
-
-| Purpose | Request |
-| --- | --- |
-| Base top-games list (popularity, reviews, CCU, owners, price) | `?request=top100in2weeks` |
-| Per-game enrichment (genre, tags, languages) | `?request=appdetails&appid=<id>` |
 
 ---
 
 ## 2. How to run locally
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/shweta243/DarioHealth.git
 cd steam-games-insights
 python -m venv .venv
 
@@ -301,24 +288,3 @@ The tests run **fully offline** using synthetic data (no live network calls).
 
 ---
 
-## Git push checklist
-
-```bash
-git status
-git add .
-git commit -m "Finalize dashboard, quality checks, and ETL test coverage"
-git remote -v
-git push origin <your-branch>
-```
-
-If no remote is configured, add one first:
-
-```bash
-git remote add origin <your-repository-url>
-git push -u origin <your-branch>
-```
-
----
-
-*Data source: [SteamSpy](https://steamspy.com). Please do not include any
-confidential or proprietary data when extending this project.*
