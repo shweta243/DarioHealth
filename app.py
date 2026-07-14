@@ -296,13 +296,13 @@ def insights_worldwide(m: pd.DataFrame) -> list[str]:
     first = m.iloc[0]
     peak = m.loc[m["mau"].idxmax()]
     return [
-        f"Latest month **{latest['month']}**: MAU **{fmt_big(latest['mau'])}** "
+        f"Latest month **{latest['month']}**: MAU **{fmt_compact(latest['mau'])}** "
         f"({_pct(latest['mau'], yoy['mau']):+.1f}% YoY) and DAU "
-        f"**{fmt_big(latest['dau'])}** ({_pct(latest['dau'], yoy['dau']):+.1f}% YoY).",
-        f"New users this month: **{fmt_big(latest['new_users'])}** "
+        f"**{fmt_compact(latest['dau'])}** ({_pct(latest['dau'], yoy['dau']):+.1f}% YoY).",
+        f"New users this month: **{fmt_compact(latest['new_users'])}** "
         f"({_pct(latest['new_users'], yoy['new_users']):+.1f}% YoY).",
         f"MAU has moved **{_pct(latest['mau'], first['mau']):+.0f}%** since "
-        f"{first['month']}, peaking at **{fmt_big(peak['mau'])}** in **{peak['month']}**.",
+        f"{first['month']}, peaking at **{fmt_compact(peak['mau'])}** in **{peak['month']}**.",
         f"Average DAU/MAU stickiness is **{(m['dau'] / m['mau']).mean() * 100:.0f}%**.",
     ]
 
@@ -497,15 +497,15 @@ elif page_name.endswith("Worldwide"):
 
         # KPI cards with increment / decrement vs same month last year
         k = st.columns(6)
-        k[0].metric("MAU (monthly active users)", fmt_big(latest["mau"]),
+        k[0].metric("MAU (monthly active users)", fmt_compact(latest["mau"]),
                     f"{delta_pct(latest['mau'], yoy['mau']):+.1f}% YoY")
-        k[1].metric("DAU (avg daily active)", fmt_big(latest["dau"]),
+        k[1].metric("DAU (avg daily active)", fmt_compact(latest["dau"]),
                     f"{delta_pct(latest['dau'], yoy['dau']):+.1f}% YoY")
-        k[2].metric("New users (this month)", fmt_big(latest["new_users"]),
+        k[2].metric("New users (this month)", fmt_compact(latest["new_users"]),
                     f"{delta_pct(latest['new_users'], yoy['new_users']):+.1f}% YoY")
-        k[3].metric("Total sessions", fmt_big(latest["sessions"]),
+        k[3].metric("Total sessions", fmt_compact(latest["sessions"]),
                     f"{delta_pct(latest['sessions'], yoy['sessions']):+.1f}% YoY")
-        k[4].metric("Total hours", fmt_big(latest["hours"]),
+        k[4].metric("Total hours", fmt_compact(latest["hours"]),
                     f"{delta_pct(latest['hours'], yoy['hours']):+.1f}% YoY")
         k[5].metric("Hours per user", f"{latest['hours_per_user']:.2f}",
                     f"{delta_pct(latest['hours_per_user'], yoy['hours_per_user']):+.1f}% YoY")

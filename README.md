@@ -31,7 +31,7 @@ titles. It answers practical questions a games publisher / market analyst asks:
 ## 2. How to run locally
 
 ```bash
-git clone https://github.com/shweta243/DarioHealth.git
+git clone <repository-url>
 cd steam-games-insights
 python -m venv .venv
 
