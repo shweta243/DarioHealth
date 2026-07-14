@@ -45,6 +45,10 @@ python etl.py
 streamlit run app.py
 ```
 
+Then open the URL shown in the terminal under `Local URL`.
+By default it is usually `http://localhost:8501` (or `http://127.0.0.1:8501`).
+If port 8501 is occupied, Streamlit will print a different port (for example, `8502`).
+
 > **No API key required.** SteamSpy is keyless. The ETL first pulls the top-100
 > list, then enriches the top **50** games with genre/tags. To respect
 > SteamSpy's polite rate limit (~1 request/second), enrichment is throttled, so
