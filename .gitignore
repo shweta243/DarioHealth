@@ -12,11 +12,7 @@ env/
 .DS_Store
 Thumbs.db
 
-# Keep data folders but ignore their generated contents
-data/raw/*
-data/processed/*
-!data/raw/.gitkeep
-!data/processed/.gitkeep
+# Track data folder contents
 
 # Logs
 *.log
