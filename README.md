@@ -18,7 +18,7 @@ Built for the *AI Data Engineer — End-to-End Home Assignment*.
 ## 1. Project overview & selected API
 
 **Product:** A games-market analytics dashboard covering the most-played Steam
-titles. It answers practical questions a games publisher / market analyst asks:
+titles. It answers the practical questions a game publisher or market analyst might ask:
 
 - *What is being played right now (live concurrent players)?*
 - *Which games have the best reception vs. their audience size?*
@@ -31,7 +31,7 @@ titles. It answers practical questions a games publisher / market analyst asks:
 ## 2. How to run locally
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/shweta243/DarioHealth.git
 cd steam-games-insights
 python -m venv .venv
 
@@ -48,7 +48,7 @@ streamlit run app.py
 > **No API key required.** SteamSpy is keyless. The ETL first pulls the top-100
 > list, then enriches the top **50** games with genre/tags. To respect
 > SteamSpy's polite rate limit (~1 request/second), enrichment is throttled, so
-> `python etl.py` takes **roughly a minute**. You can lower `TOP_N_ENRICH` in
+> `python etl.py` takes **about a minute**. You can lower `TOP_N_ENRICH` in
 > [`src/config.py`](src/config.py) for a faster run.
 
 After the ETL completes, the dashboard reads local files and works offline.
@@ -92,7 +92,7 @@ The pipeline has five clear stages (see `etl.py`):
 - Enriches the top `TOP_N_ENRICH` games with per-app `appdetails` (genre, tags,
   languages), throttled to ~1 req/sec.
 - **Resilience:** each request is retried with backoff on timeouts / HTTP
-  errors; a failing enrichment call keeps the base fields rather than dropping
+  errors. If an enrichment call fails, the base fields are kept rather than
   the game. Raw JSON is saved to `data/raw/` for full reproducibility.
 
 ### Transform — `src/transform.py`
@@ -115,10 +115,10 @@ Produces two tidy analytical tables:
 **`genre_summary.csv`** — one row per primary genre (game count, avg review
 ratio, total CCU, avg price, total owners, free-game count).
 
-Key transformations: parsing the `"1,000,000 .. 2,000,000"` owners bucket into
+Key transformations include parsing the `"1,000,000 .. 2,000,000"` owners bucket into
 numbers, converting price cents → USD and playtime minutes → hours, deriving a
 `review_ratio`, and bucketing reception into a `rating_label` (Positive / Mixed /
-Negative / Insufficient data) that respects a minimum review volume.
+Negative / Insufficient data) that respects a minimum review threshold.
 
 ### Modeled usage — `src/usage.py`
 Builds `usage_daily.csv` (daily title usage by country) from snapshot metrics in
@@ -147,10 +147,10 @@ flowchart LR
 
 ## 5. Dashboard / application overview
 
-`app.py` is a **Power BI-style, Steam-themed** dashboard (a blue/purple gradient
-matching Steam's "Dark Blue & Purple" profile theme). It has a left **"Pages"
+`app.py` is a **Power BI-style, Steam-themed** dashboard with a blue/purple gradient
+inspired by Steam's "Dark Blue & Purple" profile theme. It has a left-side **"Pages"
 navigation** and, on the analytical pages, **compact dropdown filters** (Title /
-Publisher / Country / Date) so a single title list never floods the screen.
+Publisher / Country / Date) so a single title list never overwhelms the screen.
 
 - **🧠 Summary** — an **agentic** page: headline KPIs plus an "AI-generated
   insights" panel that is computed from the data on every run (trend direction,
@@ -165,7 +165,7 @@ Publisher / Country / Date) so a single title list never floods the screen.
   a multi-series line graph, plus total usage by title and usage share by country.
 - **📋 Title Usage by Metric** — a Power BI-style **table** (TitleName /
   TotalHours / TotalSessions / UniqueUsers) with a Genre selector and the
-  dropdown filters, plus **Top 5 titles** bar charts by sessions, play hours and
+  dropdown filters, plus **Top 5 titles** bar charts by sessions, play hours, and
   unique users.
 - **👥 Active Players** — number of users playing each title **by date** (line),
   players by country (bar), and a stacked daily-players-by-country chart.
@@ -204,7 +204,7 @@ Implemented in `src/quality.py` and surfaced in the dashboard:
 17. **Logical relationship** — `owners_min ≤ owners_max`.
 18. **Owners midpoint in bounds** (`owners_min <= owners_mid <= owners_max`).
 
-Additional handling: request retries/backoff, enrichment-failure isolation,
+Additional handling includes request retries/backoff, enrichment-failure isolation,
 robust parsing of string numbers, safe fallbacks for missing fields, historical
 quality-run logging, and recurring-failure analysis.
 
@@ -221,7 +221,7 @@ quality-run logging, and recurring-failure analysis.
 ## 7. Assumptions & known limitations
 
 - **Estimates, not exact figures** — SteamSpy owners are modelled *ranges*; we
-  use the mid-point for ranking.
+  use the midpoint for ranking.
 - **Daily & country data are modeled** — SteamSpy has no per-day or per-country
   data, so `usage_daily.csv` is a **deterministic estimate** derived from the
   snapshot (CCU, playtime, publisher) across a date window and a fixed country
@@ -229,14 +229,14 @@ quality-run logging, and recurring-failure analysis.
 - **Monthly growth metrics are modeled** — `monthly_metrics.csv` (MAU, DAU,
   new users, sessions, hours across ~30 months) is likewise a deterministic,
   seeded estimate built from the snapshot totals with a growth trend and
-  seasonality, powering the "Usage Worldwide" page. It is *not* measured history.
+  seasonality, powering the "Usage Worldwide" page. It is *not* measured historical data.
 - **Snapshot in time** — CCU, prices and discounts change; re-running the ETL
   refreshes them.
 - **Enrichment is capped** — only the top `TOP_N_ENRICH` games get genre/tags to
   keep the run fast and rate-limit-friendly.
 - **Playtime can be zero** — SteamSpy does not report playtime for every title.
 - **Single provider** — no cross-source reconciliation; if SteamSpy is
-  unavailable the ETL retries then reports the failure.
+  unavailable, the ETL retries and then reports the failure.
 - **Local storage only** — CSV/JSON files, no database (kept intentionally
   simple and reviewer-friendly).
 
@@ -255,7 +255,7 @@ An AI assistant was used throughout — the full transcript is in
 - Design the dashboard's product narrative (popularity → reception → pricing →
   genres) and add offline unit tests.
 
-AI output was reviewed and refined — e.g. capping enrichment for a fast run,
+AI output was reviewed and refined — for example, capping enrichment for a fast run,
 respecting the API rate limit, and isolating enrichment failures.
 
 ---
