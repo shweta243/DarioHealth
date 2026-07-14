@@ -32,7 +32,7 @@ titles. It answers the practical questions a game publisher or market analyst mi
 
 ```bash
 git clone https://github.com/shweta243/DarioHealth.git
-cd steam-games-insights
+cd DarioHealth
 python -m venv .venv
 
 # Windows:
