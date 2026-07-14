@@ -1,5 +1,11 @@
 # 🎮 Steam Games Insights
 
+## Start here: End-to-end flow documentation
+
+Open the architecture and code ownership guide here:
+
+- [docs/etl_flow_documentation.html](docs/etl_flow_documentation.html)
+
 An end-to-end, AI-assisted data product that extracts data on the most-played
 Steam games from a **free, keyless public API**, runs an ETL + data-quality
 pipeline, and presents business-facing insights in an interactive **Streamlit**
@@ -137,6 +143,8 @@ deterministic monthly series for executive growth views.
 
 ### Data quality — `src/quality.py`
 Runs explicit checks and writes `data/processed/data_quality_report.json`.
+It also appends each run to `data/processed/data_quality_history.jsonl` so
+recurring failures can be analyzed across runs.
 
 ```mermaid
 flowchart LR
@@ -210,7 +218,16 @@ Implemented in `src/quality.py` and surfaced in the dashboard:
 18. **Owners midpoint in bounds** (`owners_min <= owners_mid <= owners_max`).
 
 Additional handling: request retries/backoff, enrichment-failure isolation,
-robust parsing of string numbers, and safe fallbacks for missing fields.
+robust parsing of string numbers, safe fallbacks for missing fields, historical
+quality-run logging, and recurring-failure analysis.
+
+### Quality history and AI-style summary
+
+- Each ETL run appends the full quality report to
+  `data/processed/data_quality_history.jsonl`.
+- The **Data Quality** dashboard page reads the last N runs, computes the top
+  recurring failed checks, and renders an **AI quality history summary** card.
+- This makes repeated failures easy to spot even when the latest run passes.
 
 ---
 

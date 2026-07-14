@@ -17,7 +17,10 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from src import config
+from src import config, quality
+
+
+DQ_HISTORY_LOOKBACK_DEFAULT = getattr(config, "QUALITY_HISTORY_LOOKBACK_RUNS", 20)
 
 st.set_page_config(
     page_title="Steam Cloud Analytics",
@@ -114,8 +117,8 @@ def style_fig(fig, height: int = 400, legend: bool = True):
         colorway=STEAM_COLORS,
     )
     grid = "rgba(102,192,244,0.10)"
-    fig.update_xaxes(gridcolor=grid, zeroline=False)
-    fig.update_yaxes(gridcolor=grid, zeroline=False)
+    fig.update_xaxes(gridcolor=grid, zeroline=False, separatethousands=True)
+    fig.update_yaxes(gridcolor=grid, zeroline=False, separatethousands=True)
     return fig
 
 
@@ -125,6 +128,7 @@ def style_fig(fig, height: int = 400, legend: bool = True):
 @st.cache_data(show_spinner=False)
 def load_data():
     games = genre = usage = monthly = report = None
+    history: list[dict] = []
     if config.GAMES_FILE.exists():
         games = pd.read_csv(config.GAMES_FILE)
     if config.GENRE_SUMMARY_FILE.exists():
@@ -135,22 +139,37 @@ def load_data():
         monthly = pd.read_csv(config.MONTHLY_METRICS_FILE, parse_dates=["month_date"])
     if config.QUALITY_REPORT_FILE.exists():
         report = json.loads(config.QUALITY_REPORT_FILE.read_text(encoding="utf-8"))
-    return games, genre, usage, monthly, report
+    try:
+        history = quality.load_quality_history(limit=500)
+    except Exception:
+        # Keep dashboard available even if a stale runtime/cache hits history loading.
+        history = []
+    return games, genre, usage, monthly, report, history
 
 
-games, genre_summary, usage, monthly, report = load_data()
+games, genre_summary, usage, monthly, report, quality_history = load_data()
 
 
 def fmt_big(n: float) -> str:
-    """Human-friendly large-number formatting (bn / M / K)."""
+    """Readable numeric formatting with comma separators."""
+    n = float(n)
+    if n.is_integer():
+        return f"{int(n):,}"
+    return f"{n:,.2f}"
+
+
+def fmt_compact(n: float) -> str:
+    """Compact numeric formatting for KPI cards (K/M/B)."""
     n = float(n)
     if abs(n) >= 1e9:
-        return f"{n / 1e9:.2f}bn"
+        return f"{n / 1e9:.2f}B"
     if abs(n) >= 1e6:
         return f"{n / 1e6:.2f}M"
     if abs(n) >= 1e3:
-        return f"{n / 1e3:.0f}K"
-    return f"{n:.0f}"
+        return f"{n / 1e3:.1f}K"
+    if n.is_integer():
+        return f"{int(n)}"
+    return f"{n:.2f}"
 
 
 # --------------------------------------------------------------------------
@@ -253,6 +272,11 @@ def _pct(cur, prev):
     return (cur - prev) / prev * 100 if prev else 0.0
 
 
+def _status_badge(status: str) -> str:
+    """Readable row badge for quality-status columns."""
+    return "🟢 PASS" if str(status).lower() == "pass" else "🔴 FAIL"
+
+
 def insight_card(insights: list[str], title: str = "🤖 AI summary of this section"):
     """Render a per-section agentic summary card inside an expander."""
     html = [re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", i) for i in insights]
@@ -343,7 +367,7 @@ def insights_genre(gs: pd.DataFrame) -> list[str]:
     best = gs.sort_values("avg_review_ratio", ascending=False).iloc[0]
     return [
         f"**{top['primary_genre']}** leads live players (**{fmt_big(top['total_ccu'])}** CCU).",
-        f"**{most['primary_genre']}** has the most titles (**{int(most['games'])}**).",
+        f"**{most['primary_genre']}** has the most titles (**{int(most['games']):,}**).",
         f"**{best['primary_genre']}** is the best-reviewed genre "
         f"(avg **{best['avg_review_ratio']:.0f}%** positive).",
     ]
@@ -390,11 +414,6 @@ PAGES = [
     "🗂️  Data",
 ]
 page = st.sidebar.radio("Pages", PAGES, label_visibility="collapsed")
-st.sidebar.markdown(
-    '<div class="note" style="margin-top:18px;">Daily &amp; country figures are '
-    "modeled estimates derived from the SteamSpy snapshot.</div>",
-    unsafe_allow_html=True,
-)
 
 if games is None or usage is None:
     st.warning("No processed data found. Run `python etl.py` first.")
@@ -418,11 +437,11 @@ page_name = page.strip()
 if page_name.endswith("Summary"):
     topbar("EXECUTIVE SUMMARY")
     k1, k2, k3, k4, k5 = st.columns(5)
-    k1.metric("Games tracked", len(games))
-    k2.metric("Live players (CCU)", f"{int(games['ccu'].sum()):,}")
+    k1.metric("Games tracked", fmt_compact(len(games)))
+    k2.metric("Live players (CCU)", fmt_compact(games["ccu"].sum()))
     k3.metric("Avg review score", f"{games['review_ratio'].mean():.0f}%")
-    k4.metric("Total player-hours", f"{usage['usage_hours'].sum() / 1e6:.1f}M")
-    k5.metric("Markets", usage["country"].nunique())
+    k4.metric("Total player-hours", fmt_compact(usage["usage_hours"].sum()))
+    k5.metric("Markets", fmt_compact(usage["country"].nunique()))
 
     st.markdown("### 🤖 AI-generated insights")
     insights = build_insights(games, usage, genre_summary)
@@ -616,16 +635,18 @@ elif page_name.endswith("by Metric"):
             ["TitleName", "TotalHours", "TotalSessions", "UniqueUsers"]
         ].sort_values("TotalHours", ascending=False)
 
+        table_display = table.copy()
+        for col in ["TotalHours", "TotalSessions", "UniqueUsers"]:
+            table_display[col] = table_display[col].map(lambda v: f"{int(v):,}")
+
         insight_card(insights_metric(table))
 
         st.markdown("#### Title usage table")
         st.dataframe(
-            table, width="stretch", hide_index=True, height=360,
-            column_config={
-                "TotalHours": st.column_config.NumberColumn("Total Hours", format="%d"),
-                "TotalSessions": st.column_config.NumberColumn("Total Sessions", format="%d"),
-                "UniqueUsers": st.column_config.NumberColumn("Unique Users", format="%d"),
-            },
+            table_display,
+            width="stretch",
+            hide_index=True,
+            height=360,
         )
 
         st.markdown("#### Top 5 titles")
@@ -642,7 +663,13 @@ elif page_name.endswith("by Metric"):
                 fig = px.bar(top5, x="TitleName", y=metric,
                              labels={"TitleName": "", metric: ""})
                 fig.update_traces(marker_color=color)
+                fig.update_traces(
+                    text=[fmt_big(v) for v in top5[metric]],
+                    textposition="outside",
+                    cliponaxis=False,
+                )
                 fig.update_xaxes(tickangle=-40)
+                fig.update_yaxes(tickformat=",.0f")
                 st.plotly_chart(style_fig(fig, 320, legend=False), width="stretch")
 
 # ==========================================================================
@@ -734,19 +761,97 @@ elif page_name.endswith("Market Snapshot"):
         c1, c2 = st.columns(2)
         with c1:
             st.markdown("#### Reception vs. audience size")
-            fig = px.scatter(gv, x="owners_mid", y="review_ratio", size="ccu",
-                             color="primary_genre", hover_name="name", log_x=True,
-                             labels={"owners_mid": "Estimated owners", "review_ratio": "Positive %"})
+            gv_scatter = gv.copy()
+            gv_scatter["owners_fmt"] = gv_scatter["owners_mid"].map(lambda v: f"{int(v):,}")
+            gv_scatter["ccu_fmt"] = gv_scatter["ccu"].map(lambda v: f"{int(v):,}")
+            gv_scatter["price_fmt"] = gv_scatter["price_usd"].map(lambda v: f"${v:.2f}")
+
+            fig = px.scatter(
+                gv_scatter,
+                x="owners_mid",
+                y="review_ratio",
+                size="ccu",
+                color="primary_genre",
+                hover_name="name",
+                log_x=True,
+                labels={"owners_mid": "Estimated owners (log scale)", "review_ratio": "Positive reviews (%)"},
+                hover_data={
+                    "owners_fmt": True,
+                    "ccu_fmt": True,
+                    "price_fmt": True,
+                    "owners_mid": False,
+                    "ccu": False,
+                    "price_usd": False,
+                },
+            )
+            fig.update_xaxes(tickformat=",.0f")
+            fig.update_yaxes(range=[0, 100], ticksuffix="%")
+            fig.update_xaxes(showticklabels=False)
             st.plotly_chart(style_fig(fig, 420), width="stretch")
+            st.markdown(
+                "- X-axis uses log scale for owner range spread.  "
+                "\n- Y-axis shows positive review ratio (%).  "
+                "\n- Bubble size represents live concurrent players (CCU)."
+            )
         with c2:
             st.markdown("#### Price distribution (paid)")
             paid = gv[~gv["is_free"]]
             if paid.empty:
                 st.info("No paid games in this selection.")
             else:
-                fig = px.histogram(paid, x="price_usd", nbins=20, labels={"price_usd": "Price (USD)"})
-                fig.update_traces(marker_color=PURPLE)
+                p1, p2, p3 = st.columns(3)
+                p1.metric("Paid titles", f"{len(paid):,}")
+                p2.metric("Median price", f"${paid['price_usd'].median():.2f}")
+                p3.metric("Avg price", f"${paid['price_usd'].mean():.2f}")
+
+                price_bins = [0, 5, 10, 20, 30, 40, 60, 100, 10_000]
+                labels = [
+                    "$0-$4.99",
+                    "$5-$9.99",
+                    "$10-$19.99",
+                    "$20-$29.99",
+                    "$30-$39.99",
+                    "$40-$59.99",
+                    "$60-$99.99",
+                    "$100+",
+                ]
+                dist = paid.copy()
+                dist["price_bucket"] = pd.cut(
+                    dist["price_usd"],
+                    bins=price_bins,
+                    labels=labels,
+                    right=False,
+                    include_lowest=True,
+                )
+                bucket_counts = (
+                    dist.groupby("price_bucket", as_index=False)
+                    .size()
+                    .rename(columns={"size": "titles"})
+                )
+                bucket_counts = bucket_counts[bucket_counts["titles"] > 0]
+                bucket_counts["share_pct"] = (
+                    bucket_counts["titles"] / bucket_counts["titles"].sum() * 100
+                )
+
+                fig = px.bar(
+                    bucket_counts,
+                    x="price_bucket",
+                    y="titles",
+                    labels={"price_bucket": "Price bucket (USD)", "titles": "Number of titles"},
+                )
+                fig.update_traces(
+                    marker_color=PURPLE,
+                    text=[f"{v:.0f}%" for v in bucket_counts["share_pct"]],
+                    textposition="outside",
+                    cliponaxis=False,
+                )
+                fig.update_xaxes(showticklabels=False)
                 st.plotly_chart(style_fig(fig, 420, legend=False), width="stretch")
+                st.markdown(
+                    "- Bars show number of paid titles per price bucket.  "
+                    "\n- Label on each bar shows share of paid catalog.  "
+                    "\n- Use median and average above to read pricing concentration quickly."
+                )
 
         st.markdown("#### Top games by live concurrent players")
         top = gv.sort_values("ccu", ascending=False).head(15)
@@ -769,15 +874,136 @@ elif page_name.endswith("Data Quality"):
             f"Overall status: **{overall}** — "
             f"{report['checks_passed']}/{report['checks_total']} checks passed."
         )
-        q1, q2, q3 = st.columns(3)
-        q1.metric("Games validated", report["rows"])
-        q2.metric("Genres", report["genres"])
+
+        st.markdown("### Current run results")
+        q1, q2, q3, q4 = st.columns(4)
+        q1.metric("Games validated", f"{report['rows']:,}")
+        q2.metric("Genres", f"{report['genres']:,}")
         q3.metric("Checks passed", f"{report['checks_passed']}/{report['checks_total']}")
+        q4.metric("Checks failed", f"{report['checks_failed']:,}")
+
         checks_df = pd.DataFrame(report["checks"])[["check", "status", "detail"]]
-        st.dataframe(
-            checks_df.rename(columns={"check": "Check", "status": "Status", "detail": "Detail"}),
-            width="stretch", hide_index=True,
+        checks_df["badge"] = checks_df["status"].map(_status_badge)
+        c1, c2 = st.columns([1, 2])
+        with c1:
+            status_counts = checks_df["status"].value_counts().rename_axis("status").reset_index(name="count")
+            fig = px.pie(
+                status_counts,
+                names="status",
+                values="count",
+                color="status",
+                color_discrete_map={"pass": "#4fd18b", "fail": "#e46a6a"},
+                hole=0.5,
+            )
+            st.plotly_chart(style_fig(fig, 280), width="stretch")
+        with c2:
+            failed = checks_df[checks_df["status"] == "fail"]
+            if failed.empty:
+                st.success("No failing checks in the current run.")
+            else:
+                st.markdown("#### Failing checks (current run)")
+                st.dataframe(
+                    failed[["check", "badge", "detail"]].rename(
+                        columns={"check": "Check", "badge": "Status", "detail": "Detail"}
+                    ),
+                    width="stretch",
+                    hide_index=True,
+                )
+
+        with st.expander("View all checks (current run)", expanded=False):
+            st.dataframe(
+                checks_df[["check", "badge", "detail"]].rename(
+                    columns={"check": "Check", "badge": "Status", "detail": "Detail"}
+                ),
+                width="stretch",
+                hide_index=True,
+            )
+
+        st.markdown("### Historical quality results")
+
+        lookback = st.slider(
+            "History lookback (runs)",
+            min_value=3,
+            max_value=100,
+            value=min(DQ_HISTORY_LOOKBACK_DEFAULT, 100),
+            step=1,
+            key="dq_lookback",
         )
+        recurring = quality.top_recurring_failed_checks(
+            quality_history, lookback_runs=lookback, top_n=5
+        )
+
+        if quality_history:
+            hist = pd.DataFrame(quality_history)
+            if {"generated_at", "checks_failed", "checks_total"}.issubset(hist.columns):
+                hist = hist.copy()
+                hist["generated_at"] = pd.to_datetime(hist["generated_at"], errors="coerce")
+                hist = hist.dropna(subset=["generated_at"]).sort_values("generated_at")
+                hist = hist.tail(lookback)
+                if not hist.empty:
+                    hist["pass_rate"] = (
+                        (hist["checks_total"] - hist["checks_failed"]).astype(float)
+                        / hist["checks_total"].replace(0, pd.NA)
+                    ) * 100
+                    hc1, hc2 = st.columns(2)
+                    with hc1:
+                        st.markdown("#### Failed checks trend")
+                        fig = px.line(
+                            hist,
+                            x="generated_at",
+                            y="checks_failed",
+                            markers=True,
+                            labels={"generated_at": "", "checks_failed": "Failed checks"},
+                        )
+                        fig.update_traces(line_color="#e46a6a", line_width=2.6)
+                        st.plotly_chart(style_fig(fig, 280, legend=False), width="stretch")
+                    with hc2:
+                        st.markdown("#### Pass rate trend")
+                        fig = px.line(
+                            hist,
+                            x="generated_at",
+                            y="pass_rate",
+                            markers=True,
+                            labels={"generated_at": "", "pass_rate": "Pass rate (%)"},
+                        )
+                        fig.update_traces(line_color="#4fd18b", line_width=2.6)
+                        st.plotly_chart(style_fig(fig, 280, legend=False), width="stretch")
+
+        if recurring:
+            total_runs = recurring[0]["run_count"]
+            insights = [
+                f"Historical quality trend uses the latest **{total_runs}** run(s).",
+                f"Most frequent failure: **{recurring[0]['check']}** "
+                f"({recurring[0]['fail_count']}/{total_runs} runs, "
+                f"{recurring[0]['fail_rate_pct']:.1f}%).",
+                f"Current run status is **{overall}** with "
+                f"**{report['checks_failed']}** failing check(s).",
+            ]
+            insight_card(insights, title="🤖 AI quality history summary")
+
+            st.markdown("#### Most recurring failed checks")
+            recurring_df = pd.DataFrame(recurring)
+            st.dataframe(
+                recurring_df.rename(
+                    columns={
+                        "check": "Check",
+                        "fail_count": "Failed runs",
+                        "run_count": "Runs analyzed",
+                        "fail_rate_pct": "Failure rate (%)",
+                        "latest_detail": "Latest failure detail",
+                    }
+                ),
+                width="stretch",
+                hide_index=True,
+            )
+        else:
+            insight_card(
+                [
+                    "No historical failures detected in the selected lookback window.",
+                    "Run history is persisted each ETL execution for recurring-failure analysis.",
+                ],
+                title="🤖 AI quality history summary",
+            )
         st.caption(f"Report generated at {report['generated_at']}")
 
 # ==========================================================================
@@ -795,5 +1021,3 @@ else:
         file_name="usage_daily.csv",
         mime="text/csv",
     )
-
-st.caption("Data source: SteamSpy · Daily & country figures are modeled estimates · AI Data Engineer assignment.")

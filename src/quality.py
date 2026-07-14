@@ -8,6 +8,7 @@ silently ignored.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
 from typing import Any
 
 import pandas as pd
@@ -16,6 +17,15 @@ from pandas.api.types import is_bool_dtype, is_numeric_dtype, is_object_dtype, i
 from . import config, utils
 
 logger = utils.get_logger()
+
+
+def _quality_history_path() -> "Path":
+    """Resolve quality-history path with backward-compatible fallback."""
+    return getattr(
+        config,
+        "QUALITY_HISTORY_FILE",
+        config.PROCESSED_DIR / "data_quality_history.jsonl",
+    )
 
 
 EXPECTED_COLUMNS = {
@@ -94,6 +104,70 @@ def _valid_bool_series(series: pd.Series) -> bool:
     valid = {True, False, 0, 1}
     values = set(series.dropna().unique().tolist())
     return values.issubset(valid)
+
+
+def _append_quality_history(report: dict[str, Any]) -> None:
+    """Append one quality-run record to the JSONL history file."""
+    history_path = _quality_history_path()
+    history_path.parent.mkdir(parents=True, exist_ok=True)
+    with history_path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(report, ensure_ascii=False) + "\n")
+
+
+def load_quality_history(limit: int | None = None) -> list[dict[str, Any]]:
+    """Load quality-run history records from JSONL (oldest to newest)."""
+    path = _quality_history_path()
+    if not path.exists():
+        return []
+
+    records: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError:
+                # Skip malformed history rows instead of failing dashboard/ETL.
+                continue
+
+    if limit is not None and limit > 0:
+        return records[-limit:]
+    return records
+
+
+def top_recurring_failed_checks(
+    history: list[dict[str, Any]], lookback_runs: int, top_n: int = 5
+) -> list[dict[str, Any]]:
+    """Return the most frequent failed checks across the latest N runs."""
+    recent = history[-lookback_runs:] if lookback_runs > 0 else history
+    if not recent:
+        return []
+
+    counts: dict[str, int] = {}
+    last_detail: dict[str, str] = {}
+    for run in recent:
+        for check in run.get("checks", []):
+            if check.get("status") != "fail":
+                continue
+            name = str(check.get("check", "unknown"))
+            counts[name] = counts.get(name, 0) + 1
+            last_detail[name] = str(check.get("detail", ""))
+
+    ranked = sorted(counts.items(), key=lambda kv: kv[1], reverse=True)
+    out: list[dict[str, Any]] = []
+    for name, count in ranked[:top_n]:
+        out.append(
+            {
+                "check": name,
+                "fail_count": count,
+                "run_count": len(recent),
+                "fail_rate_pct": round((count / len(recent)) * 100, 1),
+                "latest_detail": last_detail.get(name, ""),
+            }
+        )
+    return out
 
 
 def run_quality_checks(
@@ -388,6 +462,7 @@ def run_quality_checks(
     if save:
         utils.ensure_directories()
         utils.save_json(report, config.QUALITY_REPORT_FILE)
+        _append_quality_history(report)
     logger.info(
         "Data quality: %s/%s checks passed (%s)",
         passed,

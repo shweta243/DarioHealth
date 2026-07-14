@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Steam Games Insights - ETL Flow Diagram</title>
+  <style>
+    :root {
+      --bg-1: #1b2838;
+      --bg-2: #172033;
+      --bg-3: #191533;
+      --text: #eaf2fb;
+      --muted: #a5b7ce;
+      --accent: #66c0f4;
+      --accent-2: #a679ff;
+      --ok: #37c6d0;
+      --warn: #f6c76a;
+      --danger: #ff7b7b;
+      --panel-border: rgba(102, 192, 244, 0.24);
+      --node-bg: rgba(16, 24, 40, 0.9);
+      --node-stroke: rgba(102, 192, 244, 0.52);
+      --test-stroke: rgba(246, 199, 106, 0.64);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(1000px 600px at 50% -8%, #33507a 0%, rgba(51, 80, 122, 0) 55%),
+        radial-gradient(900px 700px at 100% 105%, #3a2b5e 0%, rgba(58, 43, 94, 0) 52%),
+        linear-gradient(160deg, var(--bg-1) 0%, var(--bg-2) 45%, var(--bg-3) 100%);
+      min-height: 100vh;
+    }
+
+    .wrap {
+      width: min(1360px, 96vw);
+      margin: 20px auto 28px;
+    }
+
+    .hero {
+      border: 1px solid var(--panel-border);
+      border-radius: 14px;
+      padding: 16px 20px;
+      background: linear-gradient(90deg, rgba(102, 192, 244, 0.14), rgba(166, 121, 255, 0.10));
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+      margin-bottom: 12px;
+    }
+
+    .brand {
+      text-transform: uppercase;
+      font-size: 0.8rem;
+      letter-spacing: 1.1px;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 6px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.35rem, 2.4vw, 2.05rem);
+      line-height: 1.2;
+    }
+
+    .subtitle {
+      margin: 7px 0 0;
+      color: #d2dff0;
+      font-size: 0.94rem;
+    }
+
+    .diagram-shell {
+      border: 1px solid var(--panel-border);
+      border-radius: 14px;
+      padding: 12px;
+      background: linear-gradient(180deg, rgba(35, 48, 72, 0.78), rgba(23, 19, 42, 0.74));
+      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.26);
+      overflow-x: auto;
+    }
+
+    svg {
+      width: 100%;
+      min-width: 1260px;
+      height: auto;
+      display: block;
+    }
+
+    .node {
+      fill: var(--node-bg);
+      stroke: var(--node-stroke);
+      stroke-width: 1.8;
+      rx: 12;
+      ry: 12;
+    }
+
+    .node-title {
+      fill: var(--text);
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .node-body {
+      fill: #ccdaeb;
+      font-size: 11.5px;
+    }
+
+    .node-label {
+      fill: #9db0c8;
+      font-size: 10px;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+
+    .flow-line {
+      stroke: rgba(102, 192, 244, 0.75);
+      stroke-width: 2.3;
+      fill: none;
+      marker-end: url(#arrowMain);
+    }
+
+    .flow-test {
+      stroke: rgba(246, 199, 106, 0.9);
+      stroke-width: 2.2;
+      fill: none;
+      stroke-dasharray: 7 5;
+      marker-end: url(#arrowTest);
+    }
+
+    .legend {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    .legend .item {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 4px 8px;
+      border: 1px solid rgba(102, 192, 244, 0.18);
+      border-radius: 999px;
+      background: rgba(11, 18, 30, 0.5);
+    }
+
+    .swatch {
+      width: 18px;
+      height: 2px;
+      display: inline-block;
+      background: var(--accent);
+    }
+
+    .swatch.test {
+      background: var(--warn);
+      border-top: 2px dashed var(--warn);
+      height: 0;
+      width: 20px;
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="hero">
+      <div class="brand">Steam · Cloud Analytics</div>
+      <h1>End-to-End ETL Flow Diagram with Unit Test Execution</h1>
+      <p class="subtitle">Datasource, code ownership, artifacts, and testing path are embedded directly in the flow.</p>
+    </section>
+
+    <section class="diagram-shell" aria-label="etl-flow-diagram">
+      <svg viewBox="0 0 1300 780" role="img" aria-label="Steam ETL pipeline and test execution flow">
+        <defs>
+          <marker id="arrowMain" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+            <polygon points="0,0 10,4 0,8" fill="rgba(102, 192, 244, 0.9)"></polygon>
+          </marker>
+          <marker id="arrowTest" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto">
+            <polygon points="0,0 10,4 0,8" fill="rgba(246, 199, 106, 0.95)"></polygon>
+          </marker>
+        </defs>
+
+        <rect class="node" x="30" y="60" width="230" height="140"></rect>
+        <text class="node-label" x="48" y="84">Data Source</text>
+        <text class="node-title" x="48" y="108">SteamSpy API</text>
+        <text class="node-body" x="48" y="130">- Endpoint: top100in2weeks</text>
+        <text class="node-body" x="48" y="148">- Endpoint: appdetails?appid=</text>
+        <text class="node-body" x="48" y="166">- Config in: src/config.py</text>
+        <text class="node-body" x="48" y="184">- Keyless public API</text>
+
+        <rect class="node" x="320" y="60" width="260" height="170"></rect>
+        <text class="node-label" x="338" y="84">Stage 1</text>
+        <text class="node-title" x="338" y="108">Extract Layer</text>
+        <text class="node-body" x="338" y="130">- Code: src/extract.py</text>
+        <text class="node-body" x="338" y="148">- Logic: retries, backoff, throttle</text>
+        <text class="node-body" x="338" y="166">- Merge base + enrichment details</text>
+        <text class="node-body" x="338" y="184">- Output: data/raw/top100in2weeks.json</text>
+        <text class="node-body" x="338" y="202">- Output: data/raw/games_enriched.json</text>
+
+        <rect class="node" x="640" y="60" width="280" height="190"></rect>
+        <text class="node-label" x="658" y="84">Stage 2</text>
+        <text class="node-title" x="658" y="108">Transform Layer</text>
+        <text class="node-body" x="658" y="130">- Code: src/transform.py</text>
+        <text class="node-body" x="658" y="148">- Normalize schema + parse owners ranges</text>
+        <text class="node-body" x="658" y="166">- Derive review ratio, pricing, playtime</text>
+        <text class="node-body" x="658" y="184">- Output: data/processed/games.csv</text>
+        <text class="node-body" x="658" y="202">- Output: data/processed/genre_summary.csv</text>
+        <text class="node-body" x="658" y="220">- Labels and flags for analytics</text>
+
+        <rect class="node" x="960" y="50" width="300" height="230"></rect>
+        <text class="node-label" x="978" y="74">Stage 3 and Stage 4</text>
+        <text class="node-title" x="978" y="98">Modeled Layers</text>
+        <text class="node-body" x="978" y="120">- Code: src/usage.py</text>
+        <text class="node-body" x="978" y="138">- Output: data/processed/usage_daily.csv</text>
+        <text class="node-body" x="978" y="156">- Date-country-title usage modeling</text>
+        <text class="node-body" x="978" y="178">- Code: src/growth.py</text>
+        <text class="node-body" x="978" y="196">- Output: data/processed/monthly_metrics.csv</text>
+        <text class="node-body" x="978" y="214">- Deterministic MAU/DAU/session trend</text>
+        <text class="node-body" x="978" y="236">- Input seed: transformed snapshot metrics</text>
+
+        <rect class="node" x="770" y="350" width="300" height="190"></rect>
+        <text class="node-label" x="788" y="374">Stage 5</text>
+        <text class="node-title" x="788" y="398">Data Quality Layer</text>
+        <text class="node-body" x="788" y="420">- Code: src/quality.py</text>
+        <text class="node-body" x="788" y="438">- Checks: schema, nulls, ranges, relations</text>
+        <text class="node-body" x="788" y="456">- Output: data_quality_report.json</text>
+        <text class="node-body" x="788" y="474">- History: data_quality_history.jsonl</text>
+        <text class="node-body" x="788" y="492">- Recurring failed checks analysis</text>
+
+        <rect class="node" x="1110" y="360" width="170" height="170"></rect>
+        <text class="node-label" x="1128" y="384">Consumption</text>
+        <text class="node-title" x="1128" y="408">Dashboard</text>
+        <text class="node-body" x="1128" y="430">- Code: app.py</text>
+        <text class="node-body" x="1128" y="448">- Reads all processed files</text>
+        <text class="node-body" x="1128" y="466">- Includes quality pages</text>
+        <text class="node-body" x="1128" y="484">- Includes analytics pages</text>
+
+        <rect class="node" x="380" y="350" width="340" height="210" style="stroke: var(--test-stroke);"></rect>
+        <text class="node-label" x="398" y="374" fill="#f6c76a">Testing Path</text>
+        <text class="node-title" x="398" y="398">Unit and Pipeline Tests</text>
+        <text class="node-body" x="398" y="420">- How tests are run</text>
+        <text class="node-body" x="398" y="438">- Activate venv before running tests</text>
+        <text class="node-body" x="398" y="456">- Command: pytest -q</text>
+        <text class="node-body" x="398" y="474">- Test file: tests/test_etl.py</text>
+        <text class="node-body" x="398" y="492">- Test file: tests/test_pipeline_layers.py</text>
+        <text class="node-body" x="398" y="510">- Validates transforms and quality rules</text>
+        <text class="node-body" x="398" y="528">- Validates orchestration order and artifacts</text>
+
+        <rect class="node" x="60" y="350" width="280" height="190"></rect>
+        <text class="node-label" x="78" y="374">Orchestration</text>
+        <text class="node-title" x="78" y="398">ETL Entry Point</text>
+        <text class="node-body" x="78" y="420">- Code: etl.py</text>
+        <text class="node-body" x="78" y="438">- Execution: extract -> transform -> usage</text>
+        <text class="node-body" x="78" y="456">- Execution: growth -> quality</text>
+        <text class="node-body" x="78" y="474">- Persists files to data/raw</text>
+        <text class="node-body" x="78" y="492">- Persists files to data/processed</text>
+        <text class="node-body" x="78" y="510">- Feeds dashboard consumption</text>
+
+        <path class="flow-line" d="M260 130 L320 130"></path>
+        <path class="flow-line" d="M580 145 L640 145"></path>
+        <path class="flow-line" d="M920 160 L960 160"></path>
+        <path class="flow-line" d="M1110 280 C1090 320, 1010 340, 930 350"></path>
+        <path class="flow-line" d="M1070 445 L1110 445"></path>
+        <path class="flow-line" d="M340 445 L380 445"></path>
+        <path class="flow-line" d="M720 445 L770 445"></path>
+
+        <path class="flow-test" d="M550 350 C550 300, 690 280, 780 250"></path>
+        <path class="flow-test" d="M550 350 C500 300, 420 280, 330 230"></path>
+        <path class="flow-test" d="M550 560 C550 610, 300 620, 190 560"></path>
+
+        <text class="node-body" x="590" y="334" fill="#f6c76a">- Tests verify upstream stages before quality gate</text>
+      </svg>
+
+      <div class="legend" aria-label="diagram-legend">
+        <div class="item"><span class="swatch"></span> Main ETL/data flow</div>
+        <div class="item"><span class="swatch test"></span> Unit test execution flow (pytest -q)</div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

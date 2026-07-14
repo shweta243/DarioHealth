@@ -255,3 +255,132 @@ metrics are also zero for those records.
 - Quality layer: expanded schema + key + consistency checks (18 checks total).
 - Test layer: expanded to cover extract failures, usage model behavior,
   orchestration, and artifact validation (16 passing tests).
+
+---
+
+## 9. Ongoing dashboard quality-visibility updates
+
+**Me:** Are we storing data-quality results somewhere? Can we see them in the
+dashboard? Can we add an agentic layer that explains recurring errors?
+
+**AI:** Implemented a persistent quality history mechanism and dashboard layer:
+
+- Each ETL run now appends a quality snapshot to
+  `data/processed/data_quality_history.jsonl`.
+- Dashboard reads historical runs and computes top recurring failed checks over
+  the last N runs.
+- Data Quality page now includes an AI-style quality summary card based on run
+  history.
+
+**Me:** Add a proper section for showing data quality results in the dashboard.
+
+**AI:** Reworked the Data Quality page into clear sections:
+
+1. **Current run results** (KPIs, pass/fail distribution)
+2. **Failing checks (current run)** table
+3. **All checks** view in an expander
+4. **Historical quality results** with lookback slider
+5. **Trend charts** for failed checks and pass-rate over time
+6. **Recurring failure table** and AI-style historical narrative summary
+
+**Me:** Add color badges for each check row (pass/fail) to improve scanability.
+
+**AI:** Added row-level status badges:
+
+- `🟢 PASS`
+- `🔴 FAIL`
+
+These badges are now shown in the current-run checks tables.
+
+**Me:** Did everything still pass after these updates?
+
+**AI:** Yes. Re-ran the test suite and confirmed all tests pass (`17 passed`).
+
+---
+
+## 10. Flow documentation redesign (diagram-first)
+
+**Me:** The documentation should show a proper end-to-end flow, not heavy text.
+Include raw extraction to transformed layer, data-source details, and code
+ownership clearly.
+
+**AI:** Created a dedicated HTML documentation page at
+`docs/etl_flow_documentation.html` using the same Steam-themed visual language
+as the dashboard. Linked it at the top of README so reviewers can open it
+first.
+
+**Me:** Replace stage cards with an actual flow diagram.
+
+**AI:** Rebuilt the page as a true flow diagram (SVG-based) with directional
+arrows and embedded node details. The diagram now includes:
+
+- Data source endpoints (`top100in2weeks`, `appdetails`)
+- Stage-wise code ownership (`src/extract.py`, `src/transform.py`, `src/usage.py`,
+  `src/growth.py`, `src/quality.py`, `etl.py`, `app.py`)
+- Stage artifacts (`data/raw/...`, `data/processed/...`)
+- Testing path overlay with command details
+
+**Me:** Add how unit tests are run directly in the diagram.
+
+**AI:** Added a dedicated testing branch in the flow with:
+
+- Activate venv
+- Run `pytest -q`
+- Test files: `tests/test_etl.py`, `tests/test_pipeline_layers.py`
+- Validation scope: transforms, quality rules, orchestration, artifacts
+
+**Me:** Convert all node details to bullet points.
+
+**AI:** Updated the diagram text so all detail lines are consistently
+bullet-point formatted.
+
+---
+
+## 11. Dashboard readability and formatting refinements
+
+**Me:** Improve readability in Title Usage and Market Snapshot, and remove
+repeated data-source note lines.
+
+**AI:** Implemented updates in `app.py`:
+
+- Title Usage table values formatted for readability
+- Top-5 metric charts show labeled values above bars
+- Market Snapshot scatter enhanced with richer hover details and clearer axis
+  interpretation notes
+- Price Distribution redesigned into bucketed bars with percentage labels and
+  supporting median/average price KPIs
+- Removed persistent data-source footer/side notes from dashboard views
+
+**Me:** Add comma formatting across the entire dashboard.
+
+**AI:** Applied a broader comma-format pass:
+
+- Global chart axis thousand separation enabled in shared figure styling
+- KPI cards updated to use comma-separated values where applicable
+- Key table/metric displays normalized for comma-readable counts
+- Numeric narrative fields updated to align with comma-first readability
+
+This preserved percentage and currency semantics while improving readability of
+large numbers throughout dashboard pages.
+
+---
+
+## 12. Final readability tuning and transcript sync
+
+**Me:** In Market Snapshot, remove x-axis labels from both charts:
+Reception vs audience size and Price distribution.
+
+**AI:** Updated dashboard rendering to hide x-axis tick labels in both
+requested charts while retaining chart titles, hover details, and explanatory
+notes for interpretation.
+
+**Me:** In the Summary section, comma formatting looks clumsy. Use K/M style
+instead.
+
+**AI:** Updated Summary KPI cards to use compact readability format (K/M)
+instead of comma-separated long values, including:
+
+- Games tracked
+- Live players (CCU)
+- Total player-hours
+- Markets

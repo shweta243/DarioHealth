@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from src import quality, transform
+from src import config, quality, transform
 
 
 def _sample_records() -> list[dict]:
@@ -146,3 +146,23 @@ def test_quality_flags_null_key_fields():
     statuses = {c["check"]: c["status"] for c in report["checks"]}
     assert statuses["key_fields_not_null"] == "fail"
     assert report["overall_status"] == "fail"
+
+
+def test_quality_appends_history_and_recurring_failures(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "QUALITY_REPORT_FILE", tmp_path / "dq_report.json")
+    monkeypatch.setattr(config, "QUALITY_HISTORY_FILE", tmp_path / "dq_history.jsonl")
+
+    df_ok = transform.build_games(_sample_records())
+    quality.run_quality_checks(df_ok, expected_games=3, save=True)
+
+    df_bad = df_ok.copy()
+    df_bad.loc[0, "price_usd"] = 99999.0
+    quality.run_quality_checks(df_bad, expected_games=3, save=True)
+
+    history = quality.load_quality_history()
+    assert len(history) == 2
+
+    recurring = quality.top_recurring_failed_checks(history, lookback_runs=10, top_n=5)
+    assert recurring
+    names = {r["check"] for r in recurring}
+    assert "price_valid" in names

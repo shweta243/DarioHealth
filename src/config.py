@@ -22,6 +22,8 @@ GENRE_SUMMARY_FILE = PROCESSED_DIR / "genre_summary.csv"
 USAGE_DAILY_FILE = PROCESSED_DIR / "usage_daily.csv"
 MONTHLY_METRICS_FILE = PROCESSED_DIR / "monthly_metrics.csv"
 QUALITY_REPORT_FILE = PROCESSED_DIR / "data_quality_report.json"
+QUALITY_HISTORY_FILE = PROCESSED_DIR / "data_quality_history.jsonl"
+QUALITY_HISTORY_LOOKBACK_RUNS = 20
 
 # --------------------------------------------------------------------------
 # API configuration (SteamSpy - free, keyless, no signup required)
