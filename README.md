@@ -4,14 +4,13 @@
 
 Open the architecture and code ownership guide here:
 
-- [docs/etl_flow_documentation.html](docs/etl_flow_documentation.html)
+- [View rendered ETL flow documentation](https://htmlpreview.github.io/?https://github.com/shweta243/DarioHealth/blob/main/docs/etl_flow_documentation.html)
 
 An end-to-end, AI-assisted data product that extracts data on the most-played
 Steam games from a **free, keyless public API**, runs an ETL + data-quality
 pipeline, and presents business-facing insights in an interactive **Streamlit**
 dashboard.
 
-Built for the *AI Data Engineer — End-to-End Home Assignment*.
 
 ---
 
